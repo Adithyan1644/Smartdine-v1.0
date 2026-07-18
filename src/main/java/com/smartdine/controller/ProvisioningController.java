@@ -29,6 +29,17 @@ public class ProvisioningController {
         if (code == null || code.trim().isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("error", "Sync code is required"));
         }
+        String cleanedCode = code.trim().toLowerCase();
+        java.io.File file = new java.io.File("activation-" + cleanedCode + ".json");
+        if (file.exists()) {
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                Map config = mapper.readValue(file, Map.class);
+                return ResponseEntity.ok(config);
+            } catch (Exception e) {
+                System.err.println("⚠️ [ProvisioningController] Failed to read dynamic config: " + e.getMessage());
+            }
+        }
 
         Optional<Restaurant> restaurantOpt = restaurantRepository.findBySyncCodeAndIsDeletedFalse(code.trim());
         if (!restaurantOpt.isPresent()) {
