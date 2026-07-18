@@ -74,7 +74,7 @@ public class UiActivationController {
     public void initialize() {
         // Set default gateway URL to the live Express API Server for strong sync integration
         if (gatewayUrlField != null) {
-            gatewayUrlField.setText("http://localhost:5000/api/activation");
+            gatewayUrlField.setText("http://localhost:8080/api/public/provision");
         }
 
         // Apply numeric filter & max length limit (4 digits) for POS PIN
@@ -101,7 +101,7 @@ public class UiActivationController {
         }
 
         if (gatewayUrl == null || gatewayUrl.trim().isEmpty()) {
-            gatewayUrl = "http://localhost:5000/api/activation";
+            gatewayUrl = "http://localhost:8080/api/public/provision";
         }
 
         final String finalCode = code.trim();
