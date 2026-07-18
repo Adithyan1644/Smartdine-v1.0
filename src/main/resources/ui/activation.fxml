@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.shape.SVGPath?>
+<?import javafx.geometry.Insets?>
+
+<StackPane fx:id="rootPane" prefWidth="900.0" prefHeight="650.0" stylesheets="@activation.css" styleClass="activation-root" xmlns="http://javafx.com/javafx/8" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.smartdine.controller.UiActivationController">
+   <children>
+      <!-- Background Decorative Gradients -->
+      <AnchorPane mouseTransparent="true" prefHeight="650.0" prefWidth="900.0">
+         <children>
+            <VBox styleClass="glow-circle-1" layoutX="-100.0" layoutY="-100.0" prefHeight="400.0" prefWidth="400.0" />
+            <VBox styleClass="glow-circle-2" layoutX="600.0" layoutY="350.0" prefHeight="400.0" prefWidth="400.0" />
+         </children>
+      </AnchorPane>
+
+      <!-- Center Card Container -->
+      <VBox alignment="CENTER" fillWidth="false">
+         <children>
+            <VBox styleClass="setup-card" prefWidth="520.0" spacing="30.0">
+               <padding>
+                  <Insets top="40.0" right="40.0" bottom="40.0" left="40.0" />
+               </padding>
+               <children>
+                  <!-- LOGO AND HEADER -->
+                  <VBox alignment="CENTER" spacing="8.0">
+                     <children>
+                        <HBox alignment="CENTER" spacing="10.0">
+                           <children>
+                              <VBox styleClass="logo-badge">
+                                 <children>
+                                    <SVGPath content="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" styleClass="logo-icon" />
+                                 </children>
+                              </VBox>
+                              <Label text="SMARTDINE" styleClass="brand-title" />
+                           </children>
+                        </HBox>
+                        <Label text="Local POS Provisioning &amp; Licensing" styleClass="brand-subtitle" />
+                     </children>
+                  </VBox>
+
+                  <Separator styleClass="title-separator" />
+
+                  <!-- STEP 1: HANDSHAKE & CONFIG DOWNLOAD -->
+                  <VBox fx:id="step1Container" spacing="20.0" fillWidth="true">
+                     <children>
+                        <VBox spacing="6.0">
+                           <children>
+                              <Label text="Phase 2: Cloud Handshake" styleClass="step-title" />
+                              <Label text="Enter your Unique Restaurant Sync Code received in your SaaS onboarding email." wrapText="true" styleClass="step-subtitle" />
+                           </children>
+                        </VBox>
+
+                        <VBox spacing="15.0">
+                           <children>
+                              <VBox spacing="6.0">
+                                 <children>
+                                    <Label text="Restaurant Sync Code" styleClass="input-label" />
+                                    <TextField fx:id="syncCodeField" promptText="e.g. SD-a0eebc99" styleClass="custom-text-field" />
+                                 </children>
+                              </VBox>
+
+                              <VBox spacing="6.0">
+                                 <children>
+                                    <Label text="Cloud Gateway Gateway URL" styleClass="input-label" />
+                                    <TextField fx:id="gatewayUrlField" promptText="http://localhost:8080/api/mock-cloud" styleClass="custom-text-field" />
+                                 </children>
+                              </VBox>
+                           </children>
+                        </VBox>
+
+                        <!-- Progress indicator & Status -->
+                        <VBox fx:id="loadingContainer" alignment="CENTER" spacing="10.0" visible="false" managed="false">
+                           <children>
+                              <ProgressIndicator prefWidth="40.0" prefHeight="40.0" />
+                              <Label fx:id="statusLabel" text="Downloading cloud configurations..." styleClass="status-msg" />
+                           </children>
+                        </VBox>
+
+                        <!-- Error Message Label -->
+                        <Label fx:id="errorLabel1" text="" wrapText="true" styleClass="error-message" visible="false" managed="false" />
+
+                        <Button fx:id="activateBtn" text="Verify Code &amp; Seed Database" onAction="#handleActivation" maxWidth="Infinity" styleClass="primary-btn" />
+                     </children>
+                  </VBox>
+
+                  <!-- STEP 2: CREATING ADMINISTRATOR CREDENTIALS -->
+                  <VBox fx:id="step2Container" spacing="20.0" fillWidth="true" visible="false" managed="false">
+                     <children>
+                        <VBox spacing="6.0">
+                           <children>
+                              <Label text="Step 2: Local Account Setup" styleClass="step-title" />
+                              <Label text="Create the local administrator credentials to secure your Biller Station." wrapText="true" styleClass="step-subtitle" />
+                           </children>
+                        </VBox>
+
+                        <VBox spacing="12.0">
+                           <children>
+                              <VBox spacing="4.0">
+                                 <children>
+                                    <Label text="Admin Username" styleClass="input-label" />
+                                    <TextField fx:id="adminUserField" text="admin" styleClass="custom-text-field" />
+                                 </children>
+                              </VBox>
+
+                              <HBox spacing="15.0">
+                                 <children>
+                                    <VBox spacing="4.0" HBox.hgrow="ALWAYS">
+                                       <children>
+                                          <Label text="Password" styleClass="input-label" />
+                                          <PasswordField fx:id="adminPasswordField" styleClass="custom-text-field" />
+                                       </children>
+                                    </VBox>
+                                    <VBox spacing="4.0" HBox.hgrow="ALWAYS">
+                                       <children>
+                                          <Label text="Confirm Password" styleClass="input-label" />
+                                          <PasswordField fx:id="confirmPasswordField" styleClass="custom-text-field" />
+                                       </children>
+                                    </VBox>
+                                 </children>
+                              </HBox>
+
+                              <VBox spacing="4.0">
+                                 <children>
+                                    <Label text="4-Digit POS PIN" styleClass="input-label" />
+                                    <TextField fx:id="adminPinField" promptText="Enter 4-Digit numeric PIN" styleClass="custom-text-field" />
+                                 </children>
+                              </VBox>
+                           </children>
+                        </VBox>
+
+                        <Label fx:id="errorLabel2" text="" wrapText="true" styleClass="error-message" visible="false" managed="false" />
+
+                        <Button fx:id="completeBtn" text="Initialize POS &amp; Start Broadcasting" onAction="#handleCompleteSetup" maxWidth="Infinity" styleClass="primary-btn" />
+                     </children>
+                  </VBox>
+               </children>
+            </VBox>
+         </children>
+      </VBox>
+   </children>
+</StackPane>

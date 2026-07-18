@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.shape.SVGPath?>
+<?import javafx.geometry.Insets?>
+
+<StackPane fx:id="rootPane" prefWidth="900.0" prefHeight="650.0" stylesheets="@login.css" styleClass="login-root" xmlns="http://javafx.com/javafx/8" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.smartdine.controller.UiLoginController">
+   <children>
+      <!-- Background Decorative Gradients -->
+      <AnchorPane mouseTransparent="true" prefHeight="650.0" prefWidth="900.0">
+         <children>
+            <VBox styleClass="glow-circle-1" layoutX="-100.0" layoutY="-100.0" prefHeight="400.0" prefWidth="400.0" />
+            <VBox styleClass="glow-circle-2" layoutX="600.0" layoutY="350.0" prefHeight="400.0" prefWidth="400.0" />
+         </children>
+      </AnchorPane>
+
+      <!-- Center Card Container -->
+      <VBox alignment="CENTER" fillWidth="false">
+         <children>
+            <VBox styleClass="login-card" prefWidth="450.0" spacing="25.0">
+               <padding>
+                  <Insets top="40.0" right="40.0" bottom="40.0" left="40.0" />
+               </padding>
+               <children>
+                  <!-- LOGO AND HEADER -->
+                  <VBox alignment="CENTER" spacing="8.0">
+                     <children>
+                        <HBox alignment="CENTER" spacing="10.0">
+                           <children>
+                              <VBox styleClass="logo-badge">
+                                 <children>
+                                    <SVGPath content="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" styleClass="logo-icon" />
+                                 </children>
+                              </VBox>
+                              <Label text="SMARTDINE" styleClass="brand-title" />
+                           </children>
+                        </HBox>
+                        <Label text="Biller Station Login" styleClass="brand-subtitle" />
+                     </children>
+                  </VBox>
+
+                  <Separator styleClass="title-separator" />
+
+                  <!-- Input Fields -->
+                  <VBox spacing="15.0" fillWidth="true">
+                     <children>
+                        <VBox spacing="6.0">
+                           <children>
+                              <Label text="Username" styleClass="input-label" />
+                              <TextField fx:id="usernameField" promptText="Enter username" styleClass="custom-text-field" />
+                           </children>
+                        </VBox>
+
+                        <VBox spacing="6.0">
+                           <children>
+                              <Label text="Password" styleClass="input-label" />
+                              <PasswordField fx:id="passwordField" promptText="Enter password" styleClass="custom-text-field" onAction="#handleLogin" />
+                           </children>
+                        </VBox>
+                     </children>
+                  </VBox>
+
+                  <!-- Error Message Label -->
+                  <Label fx:id="errorLabel" text="" wrapText="true" styleClass="error-message" visible="false" managed="false" />
+
+                  <!-- Login Button -->
+                  <Button fx:id="loginBtn" text="Log In" onAction="#handleLogin" maxWidth="Infinity" styleClass="primary-btn" />
+
+                  <!-- Reset / Register Sync Code Button -->
+                  <Button fx:id="setupBtn" text="Sync New Biller / Connect Restaurant" onAction="#handleGoToSetup" maxWidth="Infinity" styleClass="secondary-btn" />
+               </children>
+            </VBox>
+         </children>
+      </VBox>
+   </children>
+</StackPane>

@@ -1,0 +1,1269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Surabhi SmartDine — Kitchen Display System (KDS)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --g1:#051F20;--g2:#0B2B26;--g3:#1e293b;--g4:#0A3E2D;--g5:#10b981;--g6:#DAF1DE;
+  --white:#fff;--bg:#f8fafc;--border:#e2e8f0;--border2:#cbd5e1;
+  --text:#0f172a;--text2:#0A3E2D;--muted:#64748b;
+  --danger:#ef4444;--danger-bg:#fee2e2;--warn:#f97316;--warn-bg:#fef3c7;
+  --info:#2563eb;--info-bg:#eff6ff;
+  --sh:none;
+  --sh-md:none;
+  --r:8px;--rl:12px;
+}
+html,body{height:100%;font-family:'Outfit',system-ui,-apple-system,sans-serif;font-size:18px;color:var(--text);background:var(--bg);overflow:hidden;letter-spacing:0.1px}
+
+/* ── SHELL ── */
+.shell{display:grid;grid-template-columns:1fr;height:100%;overflow:hidden}
+
+/* ── SIDEBAR ── */
+.sidebar{background:#051F20;display:flex;flex-direction:column;align-items:center;padding:16px 0 10px;gap:8px;overflow-y:auto;overflow-x:hidden;z-index:10;transform:translate3d(0,0,0);-webkit-transform:translate3d(0,0,0)}
+.sidebar::-webkit-scrollbar{display:none}
+.sb-item{width:64px;height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:12px;cursor:pointer;gap:4px;color:#a5ccb1;font-size:12px;font-weight:600;letter-spacing:.2px;transition:background .13s;user-select:none;flex-shrink:0;text-align:center;padding:6px 2px}
+.sb-item i{font-size:24px;line-height:1}
+.sb-item:hover{background:rgba(255,255,255,.07);color:#fff}
+.sb-item.act{background:#0A3E2D;color:#fff}
+.sb-sep{width:36px;height:1px;background:rgba(255,255,255,.07);margin:4px 0;flex-shrink:0}
+.sb-push{flex:1}
+
+/* ── MAIN & TOPBAR ── */
+.main{display:flex;flex-direction:column;height:100%;overflow:hidden}
+.topbar{height:64px;background:var(--white);border-bottom:1.5px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:12px;flex-shrink:0;box-shadow:var(--sh)}
+.tb-brand .name{font-size:18px;font-weight:700;color:#051F20;line-height:1.1}
+.tb-brand .sub{font-size:12px;color:var(--muted)}
+.tb-search{flex:1;max-width:360px;display:flex;align-items:center;gap:8px;background:var(--white);border:1.5px solid var(--border);border-radius:var(--r);padding:9px 12px;margin:0 14px}
+.tb-search i{color:var(--muted);font-size:18px;flex-shrink:0}
+.tb-search input{flex:1;border:none;outline:none;font-size:15px;color:var(--text);background:transparent}
+.tb-search input::placeholder{color:var(--muted)}
+.tb-search kbd{margin-left:auto;background:var(--bg);border:1px solid var(--border);color:var(--muted);font-size:12px;padding:2px 5px;border-radius:4px;font-family:inherit}
+
+.tb-r{display:flex;align-items:center;gap:8px;margin-left:auto}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:9px 16px;border-radius:var(--r);font-size:14px;font-weight:600;cursor:pointer;border:1.5px solid var(--border);background:var(--white);color:var(--text);transition:background .12s;white-space:nowrap;font-family:inherit}
+.btn:hover{background:var(--bg)}
+.btn-p{background:#062F21;color:#fff;border-color:#062F21}
+.btn-p:hover{background:#0A3E2D;border-color:#0A3E2D}
+.ibt{position:relative;width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:var(--r);cursor:pointer;color:var(--text);transition:background .12s;border:1.5px solid var(--border);background:var(--white)}
+.ibt:hover{background:var(--bg)}
+.ibt i{font-size:22px}
+.nbadge{position:absolute;top:2px;right:2px;width:18px;height:18px;background:var(--danger);color:#fff;border-radius:50%;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #fff}
+.av{width:38px;height:38px;border-radius:50%;background:#2563eb;color:#fff;font-size:15px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.uname{font-size:14px;font-weight:700;color:#051F20;line-height:1.1}
+.urole{font-size:12px;color:var(--muted)}
+.dv{width:1px;height:30px;background:var(--border);flex-shrink:0}
+
+/* Live KDS Feed status badge */
+.live-badge{display:inline-flex;align-items:center;gap:6px;background:#e8f5e9;color:#15803d;padding:6px 14px;border-radius:20px;font-weight:800;font-size:12px;letter-spacing:.5px;border:1px solid #c8e6c9}
+.live-dot{width:8px;height:8px;border-radius:50%;background:#16a34a;animation:pulse-dot 1.8s infinite}
+@keyframes pulse-dot{
+  0%{opacity:0.3}
+  50%{opacity:1}
+  100%{opacity:0.3}
+}
+
+/* ── LAYOUT CONTENT ── */
+.content{flex:1;overflow-y:auto;overflow-x:hidden;padding:16px 20px;display:flex;flex-direction:column;gap:12px}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
+
+/* ── STATS BANNER ── */
+.stats-banner{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;flex-shrink:0}
+.stat-card{background:var(--white);border:1.5px solid var(--border);border-radius:var(--rl);padding:18px 20px;display:flex;align-items:center;justify-content:space-between;box-shadow:var(--sh)}
+.stat-card.sc-active{border-top:4px solid #2563eb}
+.stat-card.sc-avg{border-top:4px solid #0B2B26}
+.stat-card.sc-ready{border-top:4px solid #10b981}
+.stat-card.sc-delayed{border-top:4px solid var(--danger)}
+.stat-card.sc-completed{border-top:4px solid #7c3aed}
+.stat-info{display:flex;flex-direction:column;gap:3px}
+.stat-title{font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.8px}
+.stat-value{font-size:28px;font-weight:900;color:var(--text);letter-spacing:-1px}
+.stat-desc{font-size:12px;color:var(--muted)}
+.stat-icon{width:46px;height:46px;border-radius:50%;background:#f1f5f9;display:flex;align-items:center;justify-content:center;color:#475569;font-size:22px}
+.stat-card.sc-active .stat-icon{color:#2563eb;background:#eff6ff}
+.stat-card.sc-avg .stat-icon{color:#0B2B26;background:#f0fdf4}
+.stat-card.sc-ready .stat-icon{color:#10b981;background:#f0fdf4}
+.stat-card.sc-delayed .stat-icon{color:var(--danger);background:#fee2e2}
+.stat-card.sc-completed .stat-icon{color:#7c3aed;background:#f5f3ff}
+
+/* ── KDS WORKSPACE ── */
+.kds-workspace{display:grid;grid-template-columns:1.15fr 0.85fr;gap:12px;flex:1;min-height:0;overflow:hidden}
+
+.workspace-left{background:var(--white);border:1.5px solid var(--border);border-radius:var(--rl);box-shadow:var(--sh);display:flex;flex-direction:column;overflow:hidden}
+.workspace-right{display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden;gap:12px;transform:translate3d(0,0,0);-webkit-transform:translate3d(0,0,0)}
+
+/* Left panel controls */
+.ws-left-header{padding:12px 16px;border-bottom:1.5px solid var(--border);display:flex;flex-direction:column;gap:10px;flex-shrink:0;background:#fafdfb}
+.search-filter-row{display:flex;gap:8px}
+.kds-search{flex:1;display:flex;align-items:center;gap:8px;background:var(--white);border:1.5px solid var(--border);border-radius:var(--r);padding:0 10px}
+.kds-search i{color:var(--muted);font-size:17px}
+.kds-search input{flex:1;border:none;outline:none;font-size:15px;color:var(--text);background:transparent;padding:8px 0}
+.ws-select{background:var(--white);border:1.5px solid var(--border);border-radius:var(--r);padding:0 10px;font-size:15px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:4px;cursor:pointer;position:relative}
+.ws-select select{border:none;outline:none;background:transparent;font-family:inherit;font-size:15px;font-weight:600;color:var(--text);cursor:pointer;padding:8px 20px 8px 4px;appearance:none;-webkit-appearance:none}
+.ws-select::after{content:"\ea5f";font-family:"tabler-icons";font-size:14px;position:absolute;right:8px;pointer-events:none;color:var(--muted)}
+
+.tab-filters{display:flex;border-bottom:1.5px solid var(--border);padding:0 16px;background:#fafdfb;flex-shrink:0}
+.tab-btn{padding:12px 14px;font-size:14px;font-weight:700;color:var(--muted);cursor:pointer;border-bottom:3.5px solid transparent;user-select:none;text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center}
+.tab-btn.act{color:#0A3E2D;border-bottom-color:#0A3E2D}
+.tab-btn span{padding:2px 7px;border-radius:12px;font-size:12px;margin-left:6px;font-weight:800}
+.tab-btn:not(.act) span{background:#dcfce7;color:#15803d}
+.tab-btn[onclick*="DELAYED"]:not(.act) span{background:#fee2e2;color:#ef4444}
+.tab-btn.act span{background:#0A3E2D;color:#fff}
+.tab-btn[onclick*="DELAYED"].act span{background:#ef4444;color:#fff}
+
+/* ── KDS CARDS GRID ── */
+.kds-grid-wrapper{flex:1;overflow-y:auto;padding:12px;transform:translate3d(0,0,0);-webkit-transform:translate3d(0,0,0)}
+.kds-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+
+/* Individual KOT Card */
+.k-card{background:var(--white);border:1.5px solid var(--border);border-radius:var(--rl);box-shadow:var(--sh);display:flex;flex-direction:column;overflow:hidden;min-height:220px}
+.k-card:hover{border-color:var(--border2)}
+.k-card.status-pending{border-top:4px solid var(--warn)}
+.k-card.status-preparing{border-top:4px solid #2563eb}
+.k-card.status-ready{border-top:4px solid var(--g5)}
+.k-card.status-delayed{border-top:4px solid var(--danger)}
+
+/* Card Header */
+.k-header{padding:8px 12px;background:#fafdfb;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.k-title{font-size:16px;font-weight:800;color:var(--g1);display:flex;align-items:center;gap:5px}
+.k-title span{font-size:12px;font-weight:500;color:var(--muted)}
+.k-timer{font-size:14px;font-weight:700;color:var(--g1);display:flex;align-items:center;gap:3px;font-variant-numeric:tabular-nums;background:var(--white);border:1px solid var(--border);padding:2px 6px;border-radius:4px}
+.k-card.status-delayed .k-timer{color:var(--danger);background:var(--danger-bg);border-color:#fca5a5}
+
+.k-meta{padding:6px 12px;font-size:12px;color:var(--muted);display:flex;justify-content:space-between;border-bottom:1px dashed var(--border);background:#fafdfb}
+.k-meta span{font-weight:600;color:var(--text2)}
+
+/* Card Body */
+.k-items{flex:1;padding:8px 12px;display:flex;flex-direction:column;gap:6px}
+.k-item-row{display:flex;align-items:flex-start;gap:8px;font-size:15px;font-weight:600;color:var(--text);cursor:pointer;user-select:none}
+.k-item-row input[type="checkbox"]{
+  appearance: none;
+  width: 17px;
+  height: 17px;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 4px;
+  outline: none;
+  background-color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+.k-item-row input[type="checkbox"]:checked {
+  background-color: #10b981;
+  border-color: #10b981;
+}
+.k-item-row input[type="checkbox"]:checked::after {
+  content: "✓";
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+}
+.k-item-info{flex:1}
+.k-item-qty{font-weight:800;color:var(--g1);margin-right:4px}
+.k-item-notes{font-size:12px;color:var(--danger);font-weight:600;margin-top:1px}
+.k-item-row.cooked{text-decoration:line-through;color:#10b981;opacity:0.7}
+.k-item-row.cooked .k-item-qty{color:#10b981}
+
+.k-ticket-notes{margin-top:auto;padding-top:8px;border-top:1px dashed var(--border);font-size:13px;color:var(--info);display:flex;align-items:flex-start;gap:4px}
+.k-ticket-notes i{font-size:15px;flex-shrink:0;margin-top:1px}
+
+/* Card Footer */
+.k-footer{padding:8px 12px;background:#fafdfb;border-top:1px solid var(--border);display:flex;gap:6px}
+.k-btn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:8px;border-radius:var(--r);font-size:14px;font-weight:700;cursor:pointer;border:1px solid var(--border);background:var(--white);color:var(--g1);transition:background .1s}
+.k-btn:hover{background:var(--bg)}
+.k-btn-p{background:var(--g1);color:#fff;border-color:var(--g1)}
+.k-btn-p:hover{background:var(--g2)}
+.k-btn-ready{background:#16a34a;color:#fff;border-color:#16a34a}
+.k-btn-ready:hover{background:#15803d}
+.k-btn-clear{background:#7c3aed;color:#fff;border-color:#7c3aed}
+.k-btn-clear:hover{background:#6d28d9}
+.k-btn-locked{background:#fafafa;color:#94a3b8;border:1px solid #e2e8f0;border-radius:8px;pointer-events:none;display:flex;align-items:center;justify-content:center;gap:6px;padding:8px;font-size:13px;font-weight:600;width:100%}
+
+/* ── RIGHT PANEL (KDS PULSE & HEALTH) ── */
+.kds-panel-title{font-size:18px;font-weight:800;color:var(--g1);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;display:flex;align-items:center;gap:5px}
+.kds-panel-title i{font-size:18px}
+
+.pulse-gauge-card{background:var(--white);border:1.5px solid var(--border);border-radius:var(--rl);padding:14px;box-shadow:var(--sh);display:flex;flex-direction:column;align-items:center;text-align:center}
+.pulse-gauge-box{width:100%;max-width:160px;margin:8px 0}
+
+.queue-card{background:var(--white);border:1.5px solid var(--border);border-radius:var(--rl);padding:12px 14px;box-shadow:var(--sh);display:flex;flex-direction:column}
+.queue-list{display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto;padding-right:2px;transform:translate3d(0,0,0);-webkit-transform:translate3d(0,0,0)}
+.queue-row{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;font-size:15px;font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,0.02)}
+.queue-name{color:var(--text)}
+.queue-qty{background:#0f172a;color:#fff;font-weight:700;padding:2px 8px;border-radius:12px;font-size:10px}
+
+.stations-card{background:var(--white);border:1.5px solid var(--border);border-radius:var(--rl);padding:12px 14px;box-shadow:var(--sh);display:flex;flex-direction:column}
+.station-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)}
+.station-row:last-child{border-bottom:none}
+.station-info{display:flex;flex-direction:column;gap:2px}
+.station-name{font-size:12px;font-weight:700;color:var(--g1)}
+.station-avg{font-size:10px;color:var(--muted)}
+.station-load-badge{font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:10px}
+.st-low{background:#d1fae5;color:#065f46}
+.st-mod{background:#fef3c7;color:#b45309}
+.st-high{background:#fee2e2;color:#991b1b}
+
+/* Card status badge */
+.card-status-badge{font-size:9px;font-weight:800;padding:3px 6px;border-radius:4px;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap}
+.badge-pending{background:#ffedd5;color:#c2410c}
+.badge-preparing{background:#f1f5f9;color:#475569}
+.badge-ready{background:#dcfce7;color:#15803d}
+.badge-delayed{background:#fee2e2;color:#ef4444}
+
+/* Toast styling */
+.toast-wrap{position:fixed;top:14px;right:14px;z-index:999;display:flex;flex-direction:column;gap:6px;pointer-events:none}
+.toast{background:var(--white);border:1.5px solid var(--border);border-radius:var(--rl);padding:10px 14px;min-width:250px;max-width:310px;box-shadow:var(--sh-md);display:flex;align-items:center;gap:9px;font-size:12px;font-weight:500;animation:tIn .2s ease;pointer-events:all;border-left:3px solid var(--g5)}
+.toast.warn{border-left-color:var(--warn)}.toast.err{border-left-color:var(--danger)}
+.toast i{font-size:17px;flex-shrink:0}
+.toast.ok i{color:var(--g5)}.toast.warn i{color:var(--warn)}.toast.err i{color:var(--danger)}
+@keyframes tIn{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
+
+/* Stock control toggle buttons & dots */
+.btn-stock-toggle{padding:3px 6px;font-size:10px;font-weight:700;border-radius:6px;cursor:pointer;border:1.5px solid var(--border);background:var(--white);display:flex;align-items:center;gap:3px;transition:background .12s}
+.btn-stock-toggle.instock{color:#16a34a;border-color:#b9f6ca;background:#f0fdf4}
+.btn-stock-toggle.stockout{color:var(--danger);border-color:#ffcdd2;background:#ffebee}
+
+.mc-dot{width:10px;height:10px;border:1.5px solid var(--border2);border-radius:2px;display:flex;align-items:center;justify-content:center}
+.mc-dot::after{content:'';width:4px;height:4px;border-radius:50%;background:var(--danger)}
+.mc-dot.v::after{background:var(--g4)}
+.disable-hover, .disable-hover * {pointer-events: none !important;}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- SIDEBAR (Not used directly inside embedded view to prevent redundant nested sidebars) -->
+
+  <!-- MAIN -->
+  <div class="main" style="width: 100%;">
+
+    <!-- TOPBAR -->
+    <header class="topbar">
+      <div class="tb-brand">
+        <div class="name">Surabhi SmartDine</div>
+        <div class="sub">Powered by Oraaco Intelligence</div>
+      </div>
+
+      <div class="tb-search">
+        <i class="ti ti-search"></i>
+        <input type="text" id="kds-search-input" placeholder="Search tickets, tables, items…" oninput="filterKds()">
+        <kbd>⌘K</kbd>
+      </div>
+
+      <div class="tb-r">
+        <span class="live-badge"><span class="live-dot"></span>KDS Live</span>
+        <div class="dv"></div>
+        <div class="ws-select" style="min-width:150px">
+          <i class="ti ti-user-cog"></i>
+          <select id="role-select" onchange="changeViewRole(this.value)">
+            <option value="BILLER" selected>Biller / Cashier</option>
+            <option value="KITCHEN">Kitchen Master</option>
+          </select>
+        </div>
+        <div class="dv"></div>
+        <div class="ibt" onclick="toast('Sound alerts toggled','ok')">
+          <i class="ti ti-volume-2"></i>
+        </div>
+        <div class="ibt" onclick="toast('Settings open','ok')"><i class="ti ti-settings"></i></div>
+        <div class="dv"></div>
+        <div class="av" id="user-avatar" style="background:#2563eb">B</div>
+        <div>
+          <div class="uname" id="user-name">Biller / Cashier</div>
+          <div class="urole" id="user-role">Billing Counter</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- CONTENT -->
+    <div class="content">
+
+      <!-- STATS BANNER -->
+      <section class="stats-banner">
+        <div class="stat-card sc-active">
+          <div class="stat-info">
+            <span class="stat-title">Active Tickets</span>
+            <span class="stat-value" id="cnt-stat-active">3</span>
+            <span class="stat-desc">Cooking or awaiting prep</span>
+          </div>
+          <div class="stat-icon"><i class="ti ti-clipboard"></i></div>
+        </div>
+        <div class="stat-card sc-avg">
+          <div class="stat-info">
+            <span class="stat-title">Avg Prep Time</span>
+            <span class="stat-value">13.8<span style="font-size:15px;font-weight:700;color:var(--muted);margin-left:2px">mins</span></span>
+            <span class="stat-desc">Target: 15 mins</span>
+          </div>
+          <div class="stat-icon"><i class="ti ti-clock"></i></div>
+        </div>
+        <div class="stat-card sc-ready">
+          <div class="stat-info">
+            <span class="stat-title">Ready Items</span>
+            <span class="stat-value" id="cnt-stat-ready">1</span>
+            <span class="stat-desc">Ready to serve</span>
+          </div>
+          <div class="stat-icon"><i class="ti ti-circle-check"></i></div>
+        </div>
+        <div class="stat-card sc-delayed">
+          <div class="stat-info">
+            <span class="stat-title">Delayed Tickets</span>
+            <span class="stat-value" id="cnt-stat-delayed" style="color:var(--danger)">0</span>
+            <span class="stat-desc">Exceeded 15m mark</span>
+          </div>
+          <div class="stat-icon"><i class="ti ti-alert-triangle"></i></div>
+        </div>
+        <div class="stat-card sc-completed">
+          <div class="stat-info">
+            <span class="stat-title">Completed Today</span>
+            <span class="stat-value" id="cnt-stat-completed">48</span>
+            <span class="stat-desc">Served kitchen orders</span>
+          </div>
+          <div class="stat-icon"><i class="ti ti-file-text"></i></div>
+        </div>
+      </section>
+
+      <!-- KDS WORKSPACE -->
+      <main class="kds-workspace">
+
+        <!-- Left Workspace Pane: Filter Bar and Cards Grid -->
+        <div class="workspace-left">
+          
+          <div class="ws-left-header">
+            <div class="search-filter-row">
+              <div style="flex:1; display:flex; align-items:center; gap:8px">
+                <span style="font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Station Filter:</span>
+                <div class="ws-select" style="min-width:140px">
+                  <i class="ti ti-chef-hat"></i>
+                  <select id="station-filter" onchange="filterKds()">
+                    <option value="ALL">All Stations</option>
+                    <option value="HOT_KITCHEN">Hot Kitchen</option>
+                    <option value="PANTRY">Pantry &amp; Salads</option>
+                    <option value="BEVERAGES">Beverage Counter</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="tab-filters">
+            <div class="tab-btn act" onclick="filterStatus('ALL', this)">All Tickets <span id="cnt-all">4</span></div>
+            <div class="tab-btn" onclick="filterStatus('PENDING', this)">Pending <span id="cnt-pending">1</span></div>
+            <div class="tab-btn" onclick="filterStatus('PREPARING', this)">Preparing <span id="cnt-prep">2</span></div>
+            <div class="tab-btn" onclick="filterStatus('READY', this)">Ready <span id="cnt-ready">1</span></div>
+            <div class="tab-btn" onclick="filterStatus('DELAYED', this)" style="color:var(--danger)">Delayed <span id="cnt-delayed" style="background:var(--danger-bg);color:var(--danger)">1</span></div>
+          </div>
+
+          <!-- Live Cards Container -->
+          <div class="kds-grid-wrapper">
+            <div class="kds-grid" id="kds-grid">
+              <!-- Cards dynamically rendered via JavaScript -->
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Right Workspace Pane: KDS Pulse & Health -->
+        <div class="workspace-right">
+
+          <!-- KDS Pulse Load Card -->
+          <div class="pulse-gauge-card">
+            <div class="kds-panel-title" style="margin-bottom:0">
+              <i class="ti ti-activity-heartbeat" style="color:var(--danger)"></i> KDS Kitchen Pulse
+            </div>
+            
+            <div class="pulse-gauge-box">
+              <svg viewBox="0 0 200 120" width="100%" height="80" style="display:block;margin:0 auto;overflow:visible">
+                <defs>
+                  <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stop-color="#10b981" />
+                    <stop offset="50%" stop-color="#f59e0b" />
+                    <stop offset="100%" stop-color="#ef4444" />
+                  </linearGradient>
+                </defs>
+                <!-- Background Track -->
+                <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#e2e8f0" stroke-width="12" stroke-linecap="round" />
+                
+                <!-- Ticks Group -->
+                <g stroke="#cbd5e1" stroke-width="2" stroke-linecap="round">
+                  <line x1="8" y1="100" x2="16" y2="100" stroke="#10b981" />
+                  <line x1="8" y1="100" x2="16" y2="100" transform="rotate(30, 100, 100)" stroke="#10b981" />
+                  <line x1="8" y1="100" x2="16" y2="100" transform="rotate(60, 100, 100)" stroke="#10b981" />
+                  <line x1="8" y1="100" x2="16" y2="100" transform="rotate(90, 100, 100)" stroke="#f59e0b" />
+                  <line x1="8" y1="100" x2="16" y2="100" transform="rotate(120, 100, 100)" stroke="#f59e0b" />
+                  <line x1="8" y1="100" x2="16" y2="100" transform="rotate(150, 100, 100)" stroke="#ef4444" />
+                  <line x1="8" y1="100" x2="16" y2="100" transform="rotate(180, 100, 100)" stroke="#ef4444" />
+                </g>
+
+                <!-- Active Track (78%) -->
+                <path id="gauge-active-track" d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="url(#gaugeGrad)" stroke-width="12" stroke-linecap="round" stroke-dasharray="196 1000" />
+                
+                <!-- Indicator Dot -->
+                <circle id="gauge-pointer" cx="152" cy="48" r="6" fill="#ffffff" stroke="#f59e0b" stroke-width="3" style="filter:drop-shadow(0 2px 4px rgba(245,158,11,0.4))" />
+
+                <!-- Text & Scale Labels -->
+                <text x="20" y="112" font-size="8" font-weight="700" fill="var(--muted)" text-anchor="middle">0%</text>
+                <text x="100" y="15" font-size="8" font-weight="700" fill="var(--muted)" text-anchor="middle">50%</text>
+                <text x="180" y="112" font-size="8" font-weight="700" fill="var(--muted)" text-anchor="middle">100%</text>
+                
+                <text id="gauge-text" x="100" y="85" text-anchor="middle" font-size="34" font-weight="800" fill="#051F20" font-family="Outfit, sans-serif" letter-spacing="-1">78<tspan font-size="18" fill="#5e8a6e" font-weight="600">%</tspan></text>
+                <text id="gauge-status" x="100" y="105" text-anchor="middle" font-size="10" font-weight="700" fill="#f59e0b" font-family="Outfit, sans-serif" letter-spacing="1">MEDIUM LOAD</text>
+              </svg>
+            </div>
+            <div style="font-size:11px;color:var(--muted);margin-top:-5px">Cooking load vs. active chef stations</div>
+          </div>
+
+          <!-- Chef Stations Monitor Card -->
+          <div class="stations-card">
+            <div class="kds-panel-title">
+              <i class="ti ti-users" style="color:var(--g4)"></i> Chef Stations Monitor
+            </div>
+            <div class="station-row">
+              <div class="station-info">
+                <span class="station-name">HOT KITCHEN</span>
+                <span class="station-avg" id="st-avg-hot">Avg Prep: 14.5 mins</span>
+              </div>
+              <span class="station-load-badge st-low" id="st-load-hot">Optimal</span>
+            </div>
+            <div class="station-row">
+              <div class="station-info">
+                <span class="station-name">PANTRY &amp; SALADS</span>
+                <span class="station-avg" id="st-avg-pantry">Avg Prep: 8.2 mins</span>
+              </div>
+              <span class="station-load-badge st-low" id="st-load-pantry">Optimal</span>
+            </div>
+            <div class="station-row">
+              <div class="station-info">
+                <span class="station-name">BEVERAGE COUNTER</span>
+                <span class="station-avg" id="st-avg-bev">Avg Prep: 4.1 mins</span>
+              </div>
+              <span class="station-load-badge st-low" id="st-load-bev">Optimal</span>
+            </div>
+          </div>
+
+          <!-- Cumulative Dish Prep Queue -->
+          <div class="queue-card">
+            <div class="kds-panel-title">
+              <i class="ti ti-tools-kitchen-2" style="color:var(--g4)"></i> Cumulative Cook Queue
+            </div>
+            <div class="queue-list" id="queue-list">
+              <!-- Cumulative items updated by JS -->
+            </div>
+          </div>
+
+          <!-- Today's Menu Stock Control Card -->
+          <div class="queue-card">
+            <div class="kds-panel-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+              <span><i class="ti ti-packages" style="color:var(--danger)"></i> Kitchen Stock Panel</span>
+              <span style="font-size:12px;color:var(--muted);text-transform:none">Today's Active Menu</span>
+            </div>
+            <div class="queue-list" id="kds-stock-list" style="max-height:520px;gap:6px">
+              <!-- Stock items dynamically updated from localStorage -->
+            </div>
+          </div>
+
+        </div>
+
+      </main>
+
+    </div>
+  </div>
+</div>
+
+<!-- TOASTS WRAPPER -->
+<div class="toast-wrap" id="tw"></div>
+
+<!-- JS SYSTEM FOR KDS INTERACTIVE MOCK -->
+<script>
+let currentRole = "BILLER";
+// Mock Kitchen Order Tickets (KOT)
+const defaultKots = [];
+
+let activeKots = [];
+
+function initKdsTickets() {
+  if (window.javaApp) {
+    try {
+      activeKots = JSON.parse(window.javaApp.getKdsKotsJson());
+      return;
+    } catch (e) {
+      console.error("Failed to load active KOTs from javaApp:", e);
+    }
+  }
+  activeKots = JSON.parse(JSON.stringify(defaultKots));
+}
+
+function refreshKdsData() {
+  initKdsTickets();
+  renderKdsGrid();
+  updateGlobalCounters();
+  updateCumulativeQueue();
+}
+
+// Background polling for real-time database updates every 2 seconds
+setInterval(() => {
+  if (window.javaApp) {
+    try {
+      const realKotsStr = window.javaApp.getKdsKotsJson();
+      if (typeof window._lastKotsStr === 'undefined' || window._lastKotsStr !== realKotsStr) {
+        window._lastKotsStr = realKotsStr;
+        activeKots = JSON.parse(realKotsStr);
+        renderKdsGrid();
+        updateGlobalCounters();
+        updateCumulativeQueue();
+      }
+    } catch (e) {
+      console.error("Error in KDS polling:", e);
+    }
+  }
+}, 2000);
+
+
+let completedTodayCount = 48;
+let currentStatusFilter = "ALL";
+
+// Default menu items list matching POS Billing database
+const defaultItems = [
+  { id: "BCM", name: "Butter Chicken Masala", category: "Main Course", price: 480, veg: false, isTodaysMenu: true, inStock: true },
+  { id: "PT", name: "Paneer Tikka", category: "Starters", price: 220, veg: true, isTodaysMenu: true, inStock: true },
+  { id: "HBK", name: "Hara Bhara Kabab", category: "Starters", price: 180, veg: true, isTodaysMenu: true, inStock: true },
+  { id: "MP", name: "Masala Papad", category: "Sides", price: 60, veg: true, isTodaysMenu: false, inStock: true },
+  { id: "FF", name: "French Fries", category: "Sides", price: 120, veg: true, isTodaysMenu: false, inStock: true },
+  { id: "VM", name: "Veg Manchurian", category: "Starters", price: 200, veg: true, isTodaysMenu: true, inStock: true },
+  { id: "CP", name: "Chilli Paneer", category: "Starters", price: 240, veg: true, isTodaysMenu: true, inStock: true },
+  { id: "SR", name: "Spring Rolls", category: "Starters", price: 160, veg: true, isTodaysMenu: true, inStock: true },
+  { id: "SN", name: "Schezwan Noodles", category: "Main Course", price: 220, veg: true, isTodaysMenu: false, inStock: true },
+  { id: "VB", name: "Veg Biryani", category: "Main Course", price: 280, veg: true, isTodaysMenu: true, inStock: true },
+  { id: "PBM", name: "Paneer Butter Masala", category: "Main Course", price: 260, veg: true, isTodaysMenu: false, inStock: true },
+  { id: "DT", name: "Dal Tadka", category: "Main Course", price: 160, veg: true, isTodaysMenu: true, inStock: true },
+  { id: "JR", name: "Jeera Rice", category: "Main Course", price: 140, veg: true, isTodaysMenu: true, inStock: true },
+  { id: "GN", name: "Garlic Naan", category: "Breads", price: 90, veg: true, isTodaysMenu: true, inStock: true }
+];
+
+let menuItems = [];
+
+function initStockDatabase() {
+  if (window.javaApp) {
+    try {
+      menuItems = JSON.parse(window.javaApp.getMenuItemsJson());
+      return;
+    } catch (e) {
+      console.error("Failed to fetch menu items from javaApp:", e);
+    }
+  }
+  try {
+    const stored = localStorage.getItem("surabhi_menu_items");
+    if (stored) {
+      menuItems = JSON.parse(stored);
+    } else {
+      menuItems = [...defaultItems];
+      localStorage.setItem("surabhi_menu_items", JSON.stringify(menuItems));
+    }
+  } catch (e) {
+    console.warn("localStorage not available, falling back to memory storage.", e);
+    menuItems = [...defaultItems];
+  }
+}
+
+function renderKitchenStockList() {
+  const listEl = document.getElementById("kds-stock-list");
+  if (!listEl) return;
+  listEl.innerHTML = "";
+
+  const todaysItems = menuItems.filter(item => item.isTodaysMenu);
+
+  if (todaysItems.length === 0) {
+    listEl.innerHTML = `<div style="text-align:center;padding:12px;color:var(--muted)">No items active in Today's Menu</div>`;
+    return;
+  }
+
+  todaysItems.forEach(item => {
+    const origIdx = menuItems.findIndex(mi => mi.id === item.id);
+    
+    const row = document.createElement("div");
+    row.className = "queue-row";
+    row.style.background = item.inStock ? "var(--bg)" : "rgba(192,57,43,0.04)";
+    row.style.borderColor = item.inStock ? "var(--border)" : "#ffccd2";
+    row.style.padding = "10px 14px";
+    
+    row.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="mc-dot ${item.veg ? 'v' : ''}" style="display:inline-flex;transform:scale(1.25);margin:0"></span>
+        <span style="font-weight:700;color:var(--g1);font-size:15px">${item.name}</span>
+      </div>
+      <button onclick="toggleStockFromKds(${origIdx})" class="btn-stock-toggle ${item.inStock ? 'instock' : 'stockout'}" style="padding:6px 12px;font-size:13px;border-radius:6px;cursor:pointer;border:1.5px solid;display:flex;align-items:center;gap:4px;font-weight:700">
+        <i class="ti ${item.inStock ? 'ti-circle-check' : 'ti-circle-x'}" style="font-size:16px"></i>
+        <span>${item.inStock ? 'In Stock' : 'Stock Out'}</span>
+      </button>
+    `;
+    listEl.appendChild(row);
+  });
+}
+
+function toggleStockFromKds(origIdx) {
+  const item = menuItems[origIdx];
+  const oldVal = item.inStock;
+  const newVal = !oldVal;
+  item.inStock = newVal;
+  
+  if (window.javaApp) {
+    try {
+      window.javaApp.toggleStockFromKds(item.name, newVal);
+      renderKitchenStockList();
+      toast(`${item.name} marked ${newVal ? 'In Stock' : 'Stock Out'}`, 'ok');
+      return;
+    } catch (e) {
+      console.error("Failed to toggle stock in javaApp:", e);
+    }
+  }
+
+  try {
+    localStorage.setItem("surabhi_menu_items", JSON.stringify(menuItems));
+  } catch (e) {
+    console.warn("localStorage setItem failed", e);
+  }
+  window.dispatchEvent(new Event('storage'));
+  renderKitchenStockList();
+  toast(`${item.name} marked ${newVal ? 'In Stock' : 'Stock Out'}`, 'ok');
+}
+
+window.addEventListener('storage', () => {
+  initStockDatabase();
+  renderKitchenStockList();
+});
+
+window.addEventListener("DOMContentLoaded", () => {
+  initStockDatabase();
+  initKdsTickets();
+  renderKitchenStockList();
+  renderKdsGrid();
+  updatePulseGauge();
+  startTimers();
+  updateCumulativeQueue();
+  updateGlobalCounters();
+});
+
+function toast(msg, type) {
+  const icons = {ok:'ti-circle-check', warn:'ti-alert-triangle', err:'ti-circle-x'};
+  const tw = document.getElementById('tw');
+  const t = document.createElement('div');
+  t.className = 'toast ' + (type||'ok');
+  t.innerHTML = '<i class="ti '+(icons[type]||'ti-info-circle')+'" aria-hidden="true"></i><span style="flex:1">'+msg+'</span><i class="ti ti-x" style="font-size:14px;color:var(--muted);cursor:pointer" onclick="this.parentElement.remove()"></i>';
+  tw.appendChild(t);
+  setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity .3s'},3500);
+  setTimeout(()=>t.remove(),3900);
+}
+
+function formatTime(sec) {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
+
+function startTimers() {
+  setInterval(() => {
+    activeKots.forEach(kot => {
+      kot.elapsedSeconds++;
+      const timerLabel = document.getElementById(`timer-${kot.id}`);
+      if (timerLabel) {
+        timerLabel.textContent = formatTime(kot.elapsedSeconds);
+      }
+      if (kot.elapsedSeconds >= 900 && kot.status !== 'READY') {
+        const cardElement = document.getElementById(`card-${kot.id}`);
+        if (cardElement && !cardElement.classList.contains('status-delayed')) {
+          cardElement.className = `k-card status-delayed`;
+          updateGlobalCounters();
+        }
+      }
+    });
+  }, 1000);
+}
+
+function updateGlobalCounters() {
+  let activeCount = 0;
+  let readyCount = 0;
+  let delayedCount = 0;
+  let pendingCount = 0;
+  let prepCount = 0;
+
+  activeKots.forEach(kot => {
+    if (kot.status === 'READY') {
+      readyCount++;
+    } else {
+      activeCount++;
+      if (kot.elapsedSeconds >= 900) {
+        delayedCount++;
+      }
+      if (kot.status === 'PENDING') {
+        pendingCount++;
+      } else if (kot.status === 'PREPARING') {
+        prepCount++;
+      }
+    }
+  });
+
+  document.getElementById("cnt-stat-active").textContent = activeCount;
+  document.getElementById("cnt-stat-ready").textContent = readyCount;
+  document.getElementById("cnt-stat-delayed").textContent = delayedCount;
+  document.getElementById("cnt-stat-completed").textContent = completedTodayCount;
+
+  document.getElementById("cnt-all").textContent = activeKots.length;
+  document.getElementById("cnt-pending").textContent = pendingCount;
+  document.getElementById("cnt-prep").textContent = prepCount;
+  document.getElementById("cnt-ready").textContent = readyCount;
+  document.getElementById("cnt-delayed").textContent = delayedCount;
+
+  updatePulseGauge();
+}
+
+function renderKdsGrid() {
+  const grid = document.getElementById("kds-grid");
+  grid.innerHTML = "";
+
+  const searchQuery = document.getElementById("kds-search-input").value.toLowerCase();
+  const stationFilter = document.getElementById("station-filter").value;
+
+  let filtered = activeKots.filter(kot => {
+    const matchesSearch = kot.id.toLowerCase().includes(searchQuery) ||
+                          kot.orderId.toLowerCase().includes(searchQuery) ||
+                          kot.source.toLowerCase().includes(searchQuery) ||
+                          kot.items.some(item => item.name.toLowerCase().includes(searchQuery));
+
+    let matchesTab = true;
+    if (currentStatusFilter === "PENDING") matchesTab = (kot.status === "PENDING");
+    else if (currentStatusFilter === "PREPARING") matchesTab = (kot.status === "PREPARING");
+    else if (currentStatusFilter === "READY") matchesTab = (kot.status === "READY");
+    else if (currentStatusFilter === "DELAYED") matchesTab = (kot.elapsedSeconds >= 900 && kot.status !== "READY");
+
+    let matchesStation = true;
+    if (stationFilter !== "ALL") {
+      matchesStation = kot.items.some(item => item.station === stationFilter);
+    }
+
+    return matchesSearch && matchesTab && matchesStation;
+  });
+
+  filtered.sort((a, b) => {
+    const statusOrder = { 'PENDING': 0, 'PREPARING': 1, 'READY': 2 };
+    const wa = statusOrder[a.status] !== undefined ? statusOrder[a.status] : 99;
+    const wb = statusOrder[b.status] !== undefined ? statusOrder[b.status] : 99;
+    if (wa !== wb) return wa - wb;
+    // Within same status: newest ticket first
+    // Use createdAt if available (DB tickets), otherwise use elapsedSeconds (higher = older) descending
+    if (a.createdAt && b.createdAt) return new Date(b.createdAt) - new Date(a.createdAt);
+    return (a.elapsedSeconds || 0) - (b.elapsedSeconds || 0);
+  });
+
+  if (filtered.length === 0) {
+    grid.innerHTML = `
+      <div style="grid-column: span 3; text-align: center; padding: 40px; color: var(--muted); background: var(--white); border-radius: var(--rl); border: 1.5px dashed var(--border)">
+        <i class="ti ti-clipboard-off" style="font-size: 32px; display: block; margin-bottom: 8px"></i>
+        <div style="font-weight: 700; font-size: 13px; color: var(--g1)">No Kitchen Tickets Found</div>
+        <div style="font-size: 11px">Change the active filters or check search query.</div>
+      </div>
+    `;
+    return;
+  }
+
+  filtered.forEach(kot => {
+    const isDelayed = kot.elapsedSeconds >= 900 && kot.status !== "READY";
+    let statusClass = `status-${kot.status.toLowerCase()}`;
+    if (isDelayed) statusClass = "status-delayed";
+
+    const card = document.createElement("div");
+    card.id = `card-${kot.id}`;
+    card.className = `k-card ${statusClass}`;
+
+    const isBiller = currentRole === "BILLER";
+    const statusText = getStatusLabel(kot);
+    let badgeClass = `badge-${kot.status.toLowerCase()}`;
+    if (isDelayed) badgeClass = "badge-delayed";
+
+    let headerHTML = `
+      <div class="k-header">
+        <div class="k-title">${kot.source} &nbsp;<span>${kot.orderId}</span></div>
+        <div class="k-timer" id="timer-${kot.id}">${formatTime(kot.elapsedSeconds)}</div>
+      </div>
+      <div class="k-meta">
+        <span>KOT: ${kot.id}</span>
+        <span class="card-status-badge ${badgeClass}">${statusText}</span>
+      </div>
+    `;
+
+    const stationFilter = document.getElementById("station-filter").value;
+    let displayedItems = kot.items;
+    if (stationFilter !== "ALL") {
+      displayedItems = kot.items.filter(item => item.station === stationFilter);
+    }
+
+    let itemsHTML = '<div class="k-items">';
+    displayedItems.forEach((item) => {
+      const isChecked = item.cooked ? 'checked' : '';
+      const cookedClass = item.cooked ? 'cooked' : '';
+      const originalIndex = kot.items.indexOf(item);
+      const itemKey = `${kot.id}-item-${originalIndex}`;
+
+      itemsHTML += `
+        <div class="k-item-row ${cookedClass}" ${isBiller ? 'style="cursor:default"' : `onclick="toggleItemCooked('${kot.id}', ${originalIndex}, event)"`}>
+          <input type="checkbox" id="${itemKey}" ${isChecked} ${isBiller ? 'disabled' : ''} onclick="event.stopPropagation(); ${isBiller ? 'event.preventDefault()' : `toggleItemCooked('${kot.id}', ${originalIndex}, event)`}">
+          <div class="k-item-info">
+            <span class="k-item-qty">${item.qty}x</span>${item.name}
+            ${item.modifier ? `<div class="k-item-notes">${item.modifier}</div>` : ''}
+          </div>
+        </div>
+      `;
+    });
+
+    if (kot.notes) {
+      itemsHTML += `
+        <div class="k-ticket-notes">
+          <i class="ti ti-info-circle"></i>
+          <span><strong>Notes:</strong> ${kot.notes}</span>
+        </div>
+      `;
+    }
+    itemsHTML += '</div>';
+
+    let footerHTML = '';
+    if (isBiller) {
+      if (kot.status === "READY") {
+        footerHTML = `
+          <div class="k-footer">
+            <button class="k-btn k-btn-ready" style="flex:1" onclick="printKot('${kot.id}')"><i class="ti ti-printer"></i> Print Bill</button>
+          </div>
+        `;
+      } else if (kot.status === "PREPARING") {
+        footerHTML = `
+          <div class="k-footer">
+            <button class="k-btn k-btn-locked" style="flex:1"><i class="ti ti-lock"></i> Kitchen Processing</button>
+          </div>
+        `;
+      }
+    } else {
+      footerHTML = '<div class="k-footer">';
+      if (kot.status === "PENDING") {
+        footerHTML += `
+          <button class="k-btn k-btn-p" onclick="startCooking('${kot.id}')"><i class="ti ti-flame"></i> Start Cook</button>
+          <button class="k-btn" onclick="printKot('${kot.id}')"><i class="ti ti-printer"></i> KOT</button>
+        `;
+      } else if (kot.status === "PREPARING") {
+        footerHTML += `
+          <button class="k-btn k-btn-ready" onclick="markKotReady('${kot.id}')"><i class="ti ti-circle-check"></i> Mark Ready</button>
+          <button class="k-btn" onclick="printKot('${kot.id}')"><i class="ti ti-printer"></i> KOT</button>
+        `;
+      } else if (kot.status === "READY") {
+        footerHTML += `
+          <button class="k-btn k-btn-clear" onclick="serveOrder('${kot.id}')"><i class="ti ti-bell-ringing"></i> Serve &amp; Clear</button>
+          <button class="k-btn" onclick="printKot('${kot.id}')"><i class="ti ti-printer"></i> Re-Print</button>
+        `;
+      }
+      footerHTML += '</div>';
+    }
+
+    card.innerHTML = headerHTML + itemsHTML + footerHTML;
+    grid.appendChild(card);
+  });
+}
+
+function startCooking(kotId) {
+  const kot = activeKots.find(k => k.id === kotId);
+  if (kot) {
+    if (window.javaApp && kot.dbId) {
+      try {
+        window.javaApp.updateKotStatus(kot.dbId, "PREPARING");
+        kot.status = "PREPARING";
+        toast(`Ticket ${kotId} marked as PREPARING in Hot Kitchen.`, 'ok');
+        renderKdsGrid();
+        updateGlobalCounters();
+        updateCumulativeQueue();
+        return;
+      } catch (e) {
+        console.error("Failed to update status in javaApp:", e);
+      }
+    }
+    kot.status = "PREPARING";
+    toast(`Ticket ${kotId} marked as PREPARING in Hot Kitchen.`, 'ok');
+    renderKdsGrid();
+    updateGlobalCounters();
+    updateCumulativeQueue();
+  }
+}
+
+function markKotReady(kotId) {
+  const kot = activeKots.find(k => k.id === kotId);
+  if (kot) {
+    if (window.javaApp && kot.dbId) {
+      try {
+        window.javaApp.updateKotStatus(kot.dbId, "READY");
+        kot.status = "READY";
+        kot.items.forEach(item => item.cooked = true);
+        toast(`Ticket ${kotId} for ${kot.source} is READY. Waiter notified.`, 'ok');
+        renderKdsGrid();
+        updateGlobalCounters();
+        updateCumulativeQueue();
+        return;
+      } catch (e) {
+        console.error("Failed to mark ready in javaApp:", e);
+      }
+    }
+    kot.status = "READY";
+    kot.items.forEach(item => item.cooked = true);
+    toast(`Ticket ${kotId} for ${kot.source} is READY. Waiter notified.`, 'ok');
+    renderKdsGrid();
+    updateGlobalCounters();
+    updateCumulativeQueue();
+  }
+}
+
+function serveOrder(kotId) {
+  const index = activeKots.findIndex(k => k.id === kotId);
+  if (index !== -1) {
+    const kot = activeKots[index];
+    if (window.javaApp && kot.dbId) {
+      try {
+        window.javaApp.serveKot(kot.dbId);
+        completedTodayCount++;
+        activeKots.splice(index, 1);
+        toast(`Ticket ${kotId} served and cleared from board.`, 'ok');
+        renderKdsGrid();
+        updateGlobalCounters();
+        updateCumulativeQueue();
+        return;
+      } catch (e) {
+        console.error("Failed to serve order in javaApp:", e);
+      }
+    }
+    completedTodayCount++;
+    activeKots.splice(index, 1);
+    toast(`Ticket ${kotId} served and cleared from board.`, 'ok');
+    renderKdsGrid();
+    updateGlobalCounters();
+    updateCumulativeQueue();
+  }
+}
+
+function printKot(kotId) {
+  toast(`KOT Ticket ${kotId} sent to Kitchen printer.`, 'ok');
+}
+
+function toggleItemCooked(kotId, originalIndex, event) {
+  const kot = activeKots.find(k => k.id === kotId);
+  if (kot) {
+    const targetItem = kot.items[originalIndex];
+    if (targetItem) {
+      const nextCooked = !targetItem.cooked;
+      if (window.javaApp && kot.dbId) {
+        try {
+          window.javaApp.toggleItemCooked(kot.dbId, originalIndex, nextCooked);
+          targetItem.cooked = nextCooked;
+          
+          const allCooked = kot.items.every(i => i.cooked);
+          if (allCooked && kot.status === "PREPARING") {
+            kot.status = "READY";
+            toast(`All items done! Ticket ${kot.id} is now READY.`, 'ok');
+          } else if (!allCooked && kot.status === "READY") {
+            kot.status = "PREPARING";
+          }
+          renderKdsGrid();
+          updateGlobalCounters();
+          updateCumulativeQueue();
+          return;
+        } catch (e) {
+          console.error("Failed to toggle item cooked status in javaApp:", e);
+        }
+      }
+      
+      targetItem.cooked = nextCooked;
+      const allCooked = kot.items.every(i => i.cooked);
+      if (allCooked && kot.status === "PREPARING") {
+        kot.status = "READY";
+        toast(`All items done! Ticket ${kot.id} is now READY.`, 'ok');
+      } else if (!allCooked && kot.status === "READY") {
+        kot.status = "PREPARING";
+      }
+      renderKdsGrid();
+      updateGlobalCounters();
+      updateCumulativeQueue();
+    }
+  }
+}
+
+function updateCumulativeQueue() {
+  const queueList = document.getElementById("queue-list");
+  queueList.innerHTML = "";
+
+  let consolidated = {};
+
+  activeKots.forEach(kot => {
+    if (kot.status !== 'READY') {
+      kot.items.forEach(item => {
+        if (!item.cooked) {
+          if (consolidated[item.name]) {
+            consolidated[item.name] += item.qty;
+          } else {
+            consolidated[item.name] = item.qty;
+          }
+        }
+      });
+    }
+  });
+
+  let keys = Object.keys(consolidated);
+  keys = keys.filter(name => name !== "Schezwan Noodles" && name !== "Spring Rolls");
+
+  if (keys.length === 0) {
+    queueList.innerHTML = `
+      <div style="text-align:center; padding: 16px; color:var(--muted); font-size:11px">
+        No active items in cook queue
+      </div>
+    `;
+    return;
+  }
+
+  const sortOrder = [
+    "Paneer Tikka",
+    "Veg Biryani",
+    "Hara Bhara Kabab",
+    "Paneer Butter Masala",
+    "Garlic Naan",
+    "Chilli Paneer"
+  ];
+  keys.sort((a, b) => {
+    let idxA = sortOrder.indexOf(a);
+    let idxB = sortOrder.indexOf(b);
+    if (idxA === -1) idxA = 999;
+    if (idxB === -1) idxB = 999;
+    return idxA - idxB;
+  });
+
+  keys.forEach(name => {
+    const qty = consolidated[name];
+    const row = document.createElement("div");
+    row.className = "queue-row";
+    row.innerHTML = `
+      <span class="queue-name">${name}</span>
+      <span class="queue-qty">x${qty}</span>
+    `;
+    queueList.appendChild(row);
+  });
+}
+
+function filterKds() {
+  renderKdsGrid();
+}
+
+function filterStatus(status, element) {
+  currentStatusFilter = status;
+  document.querySelectorAll('.tab-filters .tab-btn').forEach(btn => btn.classList.remove('act'));
+  element.classList.add('act');
+  renderKdsGrid();
+}
+
+function updatePulseGauge() {
+  let activeCount = activeKots.filter(kot => kot.status !== 'READY').length;
+  let loadPercentage = Math.min(Math.round((activeCount / 8) * 100), 100);
+
+  const track = document.getElementById("gauge-active-track");
+  const pointer = document.getElementById("gauge-pointer");
+  const gaugeText = document.getElementById("gauge-text");
+  const gaugeStatus = document.getElementById("gauge-status");
+
+  const maxArc = 251.2;
+  const dashoffset = (loadPercentage / 100) * maxArc;
+  track.setAttribute("stroke-dasharray", `${dashoffset} 1000`);
+
+  const angle = 180 - (loadPercentage / 100 * 180);
+  const rad = angle * Math.PI / 180;
+  const cx = 100 + 80 * Math.cos(rad);
+  const cy = 100 - 80 * Math.sin(rad);
+  
+  pointer.setAttribute("cx", cx);
+  pointer.setAttribute("cy", cy);
+  
+  gaugeText.innerHTML = `${loadPercentage}<tspan font-size="18" fill="#5e8a6e" font-weight="600">%</tspan>`;
+
+  if (loadPercentage < 40) {
+    gaugeStatus.textContent = "OPTIMAL LOAD";
+    gaugeStatus.setAttribute("fill", "#10b981");
+    pointer.setAttribute("stroke", "#10b981");
+  } else if (loadPercentage <= 78) {
+    gaugeStatus.textContent = "MEDIUM LOAD";
+    gaugeStatus.setAttribute("fill", "#f59e0b");
+    pointer.setAttribute("stroke", "#f59e0b");
+  } else {
+    gaugeStatus.textContent = "CRITICAL LOAD";
+    gaugeStatus.setAttribute("fill", "#ef4444");
+    pointer.setAttribute("stroke", "#ef4444");
+  }
+
+  // Update dynamic chef stations monitor
+  updateChefStations();
+}
+
+function getStationLoadMetrics(station) {
+  let count = 0;
+  activeKots.forEach(kot => {
+    if (kot.status !== 'READY') {
+      kot.items.forEach(item => {
+        if (item.station === station && !item.cooked) {
+          count += item.qty;
+        }
+      });
+    }
+  });
+  
+  let label = "Optimal";
+  let badgeClass = "st-low";
+  if (count >= 6) {
+    label = "High Load";
+    badgeClass = "st-high";
+  } else if (count >= 3) {
+    label = "Medium";
+    badgeClass = "st-mod";
+  }
+  
+  return { count, label, badgeClass };
+}
+
+function updateChefStations() {
+  const hotMetrics = getStationLoadMetrics("HOT_KITCHEN");
+  const pantryMetrics = getStationLoadMetrics("PANTRY");
+  const bevMetrics = getStationLoadMetrics("BEVERAGES");
+
+  // Update Hot Kitchen
+  const hotBadge = document.getElementById("st-load-hot");
+  if (hotBadge) {
+    hotBadge.className = `station-load-badge ${hotMetrics.badgeClass}`;
+    hotBadge.textContent = hotMetrics.label;
+  }
+  const hotAvg = document.getElementById("st-avg-hot");
+  if (hotAvg) {
+    const avgVal = (10 + hotMetrics.count * 1.5).toFixed(1);
+    hotAvg.textContent = `Avg Prep: ${avgVal} mins (${hotMetrics.count} items)`;
+  }
+
+  // Update Pantry & Salads
+  const pantryBadge = document.getElementById("st-load-pantry");
+  if (pantryBadge) {
+    pantryBadge.className = `station-load-badge ${pantryMetrics.badgeClass}`;
+    pantryBadge.textContent = pantryMetrics.label;
+  }
+  const pantryAvg = document.getElementById("st-avg-pantry");
+  if (pantryAvg) {
+    const avgVal = (5 + pantryMetrics.count * 1.0).toFixed(1);
+    pantryAvg.textContent = `Avg Prep: ${avgVal} mins (${pantryMetrics.count} items)`;
+  }
+
+  // Update Beverage Counter
+  const bevBadge = document.getElementById("st-load-bev");
+  if (bevBadge) {
+    bevBadge.className = `station-load-badge ${bevMetrics.badgeClass}`;
+    bevBadge.textContent = bevMetrics.label;
+  }
+  const bevAvg = document.getElementById("st-avg-bev");
+  if (bevAvg) {
+    const avgVal = (3 + bevMetrics.count * 0.5).toFixed(1);
+    bevAvg.textContent = `Avg Prep: ${avgVal} mins (${bevMetrics.count} items)`;
+  }
+}
+
+function simulateNewOrder() {
+  const tables = ["Table 4", "Table 2", "Table 9", "Zomato", "Swiggy", "Table 15"];
+  const waiters = ["Rajesh", "Priya", "Amit", "Rider Assigned", "Counter Staff"];
+  const foodItems = [
+    { name: "Butter Chicken Masala", station: "HOT_KITCHEN" },
+    { name: "Paneer Tikka", station: "HOT_KITCHEN" },
+    { name: "Hara Bhara Kabab", station: "HOT_KITCHEN" },
+    { name: "French Fries", station: "PANTRY" },
+    { name: "Veg Manchurian", station: "HOT_KITCHEN" },
+    { name: "Chilli Paneer", station: "HOT_KITCHEN" },
+    { name: "Spring Rolls", station: "PANTRY" },
+    { name: "Schezwan Noodles", station: "HOT_KITCHEN" },
+    { name: "Veg Biryani", station: "HOT_KITCHEN" },
+    { name: "Paneer Butter Masala", station: "HOT_KITCHEN" },
+    { name: "Garlic Naan", station: "HOT_KITCHEN" },
+    { name: "Coke (Can)", station: "BEVERAGES" }
+  ];
+
+  const randomKotId = "KOT-" + Math.floor(1000 + Math.random() * 9000);
+  const randomOrderId = "#" + Math.floor(1080 + Math.random() * 20);
+  const randomSource = tables[Math.floor(Math.random() * tables.length)];
+  const isDelivery = randomSource === "Zomato" || randomSource === "Swiggy";
+  
+  const itemsCount = Math.floor(1 + Math.random() * 3);
+  let randomItems = [];
+  for (let i = 0; i < itemsCount; i++) {
+    const selectedItem = foodItems[Math.floor(Math.random() * foodItems.length)];
+    const existing = randomItems.find(x => x.name === selectedItem.name);
+    if (existing) {
+      existing.qty++;
+    } else {
+      randomItems.push({
+        name: selectedItem.name,
+        qty: Math.floor(1 + Math.random() * 2),
+        station: selectedItem.station,
+        modifier: Math.random() > 0.6 ? "Less Spicy" : "",
+        cooked: false
+      });
+    }
+  }
+
+  const newKot = {
+    id: randomKotId,
+    orderId: randomOrderId,
+    type: isDelivery ? "DELIVERY" : "DINE_IN",
+    source: randomSource,
+    waiter: waiters[Math.floor(Math.random() * waiters.length)],
+    status: "PENDING",
+    elapsedSeconds: 0,
+    notes: Math.random() > 0.7 ? "Serve hot with green chutney." : "",
+    items: randomItems
+  };
+
+  activeKots.push(newKot);
+  toast(`New Kitchen Order ${randomKotId} for ${randomSource} received!`, 'warn');
+  renderKdsGrid();
+  updateGlobalCounters();
+  updateCumulativeQueue();
+}
+
+function changeViewRole(role) {
+  currentRole = role;
+  const avatar = document.getElementById("user-avatar");
+  const name = document.getElementById("user-name");
+  const sub = document.getElementById("user-role");
+  
+  if (role === "BILLER") {
+    avatar.textContent = "B";
+    avatar.style.background = "#2563eb";
+    name.textContent = "Biller / Cashier";
+    sub.textContent = "Billing Counter";
+    toast("Switched to Biller Role (Read-only status overview)", "ok");
+  } else {
+    avatar.textContent = "K";
+    avatar.style.background = "var(--g4)";
+    name.textContent = "Kitchen Master";
+    sub.textContent = "Main Kitchen";
+    toast("Switched to Kitchen Master Role (Full controls active)", "ok");
+  }
+  renderKdsGrid();
+}
+
+function getStatusLabel(kot) {
+  if (kot.elapsedSeconds >= 900 && kot.status !== "READY") {
+    return "Delayed Alert";
+  }
+  if (kot.status === "PENDING") return "Pending (Next)";
+  if (kot.status === "PREPARING") return "Preparing";
+  if (kot.status === "READY") return "Ready";
+  return kot.status;
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,139 @@
+/* --- Setup Window Stylesheet --- */
+
+.activation-root {
+    -fx-background-color: #F0F4F2; /* Soft greenish off-white */
+    -fx-font-family: "Inter", "Outfit", "Segoe UI", sans-serif;
+    -fx-font-size: 14px;
+}
+
+/* Glowing Decorative Circles */
+.glow-circle-1 {
+    -fx-background-color: radial-gradient(center 50% 50%, radius 50%, rgba(10, 79, 52, 0.12) 0%, transparent 100%);
+}
+
+.glow-circle-2 {
+    -fx-background-color: radial-gradient(center 50% 50%, radius 50%, rgba(74, 222, 128, 0.10) 0%, transparent 100%);
+}
+
+/* Setup Card Box */
+.setup-card {
+    -fx-background-color: #FFFFFF;
+    -fx-background-radius: 16px;
+    -fx-border-radius: 16px;
+    -fx-border-color: rgba(226, 232, 240, 0.8);
+    -fx-border-width: 1.5px;
+    -fx-effect: dropshadow(three-pass-box, rgba(15, 23, 42, 0.05), 30.0, 0.0, 0.0, 10.0);
+}
+
+/* Brand Branding & Header */
+.brand-title {
+    -fx-font-size: 24px;
+    -fx-font-weight: 900;
+    -fx-text-fill: #062E1E; /* Forest Green */
+    -fx-letter-spacing: 1px;
+}
+
+.brand-subtitle {
+    -fx-font-size: 13px;
+    -fx-text-fill: #64748B;
+    -fx-font-weight: bold;
+}
+
+.logo-badge {
+    -fx-background-color: #062E1E;
+    -fx-padding: 8px;
+    -fx-background-radius: 10px;
+    -fx-alignment: center;
+}
+
+.logo-icon {
+    -fx-fill: transparent;
+    -fx-stroke: #FFFFFF;
+    -fx-stroke-width: 2.0px;
+}
+
+.title-separator {
+    -fx-border-color: #E2E8F0;
+    -fx-border-width: 0.5px 0.0px 0.0px 0.0px;
+}
+
+/* Step Typography */
+.step-title {
+    -fx-font-size: 18px;
+    -fx-font-weight: 800;
+    -fx-text-fill: #0F172A;
+}
+
+.step-subtitle {
+    -fx-font-size: 13px;
+    -fx-text-fill: #64748B;
+    -fx-line-spacing: 3px;
+}
+
+/* Inputs and Labels */
+.input-label {
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #062E1E;
+}
+
+.custom-text-field {
+    -fx-background-color: #F8FAFC;
+    -fx-background-radius: 8px;
+    -fx-border-radius: 8px;
+    -fx-border-color: #CBD5E1;
+    -fx-border-width: 1px;
+    -fx-padding: 10 12;
+    -fx-text-fill: #0F172A;
+    -fx-prompt-text-fill: #94A3B8;
+}
+
+.custom-text-field:focused {
+    -fx-background-color: #FFFFFF;
+    -fx-border-color: #0A4F34; /* Rich green focus */
+    -fx-border-width: 1.5px;
+    -fx-effect: dropshadow(three-pass-box, rgba(10, 79, 52, 0.08), 5.0, 0.0, 0.0, 0.0);
+}
+
+/* Primary Button Styling */
+.primary-btn {
+    -fx-background-color: #062E1E;
+    -fx-text-fill: #FFFFFF;
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-padding: 12 24;
+    -fx-background-radius: 8px;
+    -fx-cursor: hand;
+    -fx-alignment: center;
+}
+
+.primary-btn:hover {
+    -fx-background-color: #0A4F34;
+}
+
+.primary-btn:pressed {
+    -fx-background-color: #052216;
+}
+
+/* Status & Errors */
+.status-msg {
+    -fx-font-size: 13px;
+    -fx-text-fill: #062E1E;
+    -fx-font-weight: bold;
+}
+
+.error-message {
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #DC2626; /* Warning Red */
+    -fx-background-color: #FEF2F2;
+    -fx-padding: 10 12;
+    -fx-background-radius: 6px;
+    -fx-border-color: #FCA5A5;
+    -fx-border-width: 0.5px;
+}
+
+/* Progress Indicator styling override */
+.progress-indicator {
+    -fx-progress-color: #062E1E;
+}

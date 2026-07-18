@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Surabhi SmartDine — Menu & Stock Management</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --g1:#051F20;--g2:#0B2B26;--g3:#163832;--g4:#235347;--g5:#8EB69B;--g6:#DAF1DE;
+  --white:#fff;--bg:#f3f9f5;--border:#cfe8d6;--border2:#b0d4bc;
+  --text:#051F20;--text2:#235347;--muted:#5e8a6e;
+  --danger:#c0392b;--danger-bg:#fff0ee;--warn:#b97000;--warn-bg:#fff8eb;
+  --info:#1558a0;--info-bg:#eef6ff;
+  --sh:none;
+  --sh-md:none;
+  --r:8px;--rl:12px;
+}
+html,body{height:100%;font-family:'Outfit',system-ui,-apple-system,sans-serif;font-size:18px;color:var(--text);background:var(--bg);overflow:hidden;letter-spacing:0.1px;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+
+/* ── SHELL ── */
+.shell{display:grid;grid-template-columns:1fr;height:100%;overflow:hidden}
+
+/* ── SIDEBAR ── */
+.sidebar{background:var(--g1);display:flex;flex-direction:column;align-items:center;padding:12px 0 10px;gap:1px;overflow-y:auto;overflow-x:hidden;z-index:10}
+.sidebar::-webkit-scrollbar{display:none}
+.sb-item{width:58px;height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:10px;cursor:pointer;gap:3px;color:#a5ccb1;font-size:12px;font-weight:500;letter-spacing:.2px;transition:background .13s,color .13s;user-select:none;flex-shrink:0;text-align:center;padding:4px 2px}
+.sb-item i{font-size:24px;line-height:1}
+.sb-item:hover{background:rgba(255,255,255,.07);color:#fff}
+.sb-item.act{background:var(--g4);color:#fff}
+.sb-sep{width:36px;height:1px;background:rgba(255,255,255,.07);margin:4px 0;flex-shrink:0}
+.sb-push{flex:1}
+
+/* ── MAIN & TOPBAR ── */
+.main{display:flex;flex-direction:column;height:100%;overflow:hidden}
+.topbar{height:64px;background:var(--white);border-bottom:1.5px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:12px;flex-shrink:0;box-shadow:var(--sh)}
+.tb-brand .name{font-size:18px;font-weight:700;color:var(--g1);line-height:1.1}
+.tb-brand .sub{font-size:12px;color:var(--muted)}
+.tb-search{flex:1;max-width:360px;display:flex;align-items:center;gap:8px;background:var(--bg);border:1.5px solid var(--border);border-radius:var(--r);padding:9px 12px;margin:0 14px}
+.tb-search i{color:var(--muted);font-size:18px;flex-shrink:0}
+.tb-search input{flex:1;border:none;outline:none;font-size:15px;color:var(--text);background:transparent}
+.tb-search input::placeholder{color:var(--muted)}
+.tb-search kbd{margin-left:auto;background:var(--border);color:var(--muted);font-size:12px;padding:2px 5px;border-radius:4px;font-family:inherit}
+
+.tb-r{display:flex;align-items:center;gap:8px;margin-left:auto}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:9px 16px;border-radius:var(--r);font-size:14px;font-weight:600;cursor:pointer;border:1.5px solid var(--border);background:var(--white);color:var(--text);transition:background .12s;white-space:nowrap;font-family:inherit}
+.btn:hover{background:var(--bg)}
+.btn-p{background:var(--g3);color:#fff;border-color:var(--g3)}
+.btn-p:hover{background:var(--g2)}
+.ibt{position:relative;width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:var(--r);cursor:pointer;color:var(--text2);transition:background .12s;border:1.5px solid var(--border);background:var(--white)}
+.ibt:hover{background:var(--bg)}
+.ibt i{font-size:22px}
+.av{width:38px;height:38px;border-radius:50%;background:var(--g4);color:#fff;font-size:15px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.uname{font-size:14px;font-weight:700;color:var(--g1);line-height:1.1}
+.urole{font-size:12px;color:var(--muted)}
+.dv{width:1px;height:30px;background:var(--border);flex-shrink:0}
+
+/* Live Database status badge */
+.live-badge{display:inline-flex;align-items:center;gap:6px;background:#e8f5e9;color:#15803d;padding:6px 14px;border-radius:20px;font-weight:800;font-size:12px;letter-spacing:.5px;border:1px solid #c8e6c9}
+.live-dot{width:8px;height:8px;border-radius:50%;background:#16a34a;animation:pulse-dot 1.8s infinite}
+@keyframes pulse-dot{
+  0%{opacity:0.3}
+  50%{opacity:1}
+  100%{opacity:0.3}
+}
+
+/* ── LAYOUT CONTENT ── */
+.content{flex:1;overflow-y:auto;overflow-x:hidden;padding:16px 20px;display:flex;flex-direction:column;gap:12px}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
+
+/* ── STATS BANNER ── */
+.stats-banner{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;flex-shrink:0}
+.stat-card{background:var(--white);border:1.5px solid var(--border);border-radius:var(--rl);padding:16px 20px;display:flex;align-items:center;justify-content:space-between;box-shadow:var(--sh);border-left:4px solid var(--g3)}
+.stat-card.sc-today{border-left-color:#3b82f6}
+.stat-card.sc-stockout{border-left-color:var(--danger)}
+.stat-card.sc-veg{border-left-color:#16a34a}
+.stat-info{display:flex;flex-direction:column;gap:3px}
+.stat-title{font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.8px}
+.stat-value{font-size:28px;font-weight:900;color:var(--g1);letter-spacing:-1px}
+.stat-desc{font-size:12px;color:var(--muted)}
+.stat-icon{width:46px;height:46px;border-radius:50%;background:var(--bg);display:flex;align-items:center;justify-content:center;color:var(--g3);font-size:22px}
+.stat-card.sc-today .stat-icon{color:#2563eb;background:#eff6ff}
+.stat-card.sc-stockout .stat-icon{color:var(--danger);background:#fee2e2}
+.stat-card.sc-veg .stat-icon{color:#16a34a;background:#f0fdf4}
+
+/* ── MENU CONTROLS & FILTER ROW ── */
+.menu-controls{background:var(--white);border:1.5px solid var(--border);border-radius:var(--rl);padding:12px 16px;box-shadow:var(--sh);display:flex;flex-direction:column;gap:12px}
+.filter-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.search-box{flex:1;min-width:240px;display:flex;align-items:center;gap:8px;background:var(--bg);border:1.5px solid var(--border);border-radius:var(--r);padding:7px 12px}
+.search-box i{color:var(--muted);font-size:18px}
+.search-box input{flex:1;border:none;outline:none;font-size:15px;color:var(--text);background:transparent}
+
+.ws-select{background:var(--white);border:1.5px solid var(--border);border-radius:var(--r);padding:0 8px;font-size:15px;font-weight:600;color:var(--g1);display:flex;align-items:center;gap:4px;cursor:pointer}
+.ws-select select{border:none;outline:none;background:transparent;font-family:inherit;font-size:15px;font-weight:600;color:var(--g1);cursor:pointer;padding:8px 4px}
+
+.tab-filters{display:flex;border-bottom:1.5px solid var(--border);margin-top:4px}
+.tab-btn{padding:8px 14px;font-size:14px;font-weight:700;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;user-select:none;text-transform:uppercase;letter-spacing:.5px}
+.tab-btn.act{color:var(--g2);border-bottom-color:var(--g4)}
+
+/* ── MENU TABLE ── */
+.menu-table-card{background:var(--white);border:1.5px solid var(--border);border-radius:var(--rl);box-shadow:var(--sh);overflow:hidden;flex:1;display:flex;flex-direction:column}
+.menu-table-wrapper{flex:1;overflow-y:auto;overflow-x:hidden;position:relative;transform:translate3d(0,0,0);-webkit-transform:translate3d(0,0,0)}
+.menu-table{width:100%;border-collapse:collapse;text-align:left}
+.menu-table th{position:sticky;top:0;z-index:10;background:#fafdfb;color:var(--muted);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;padding:12px 16px;border-bottom:1.5px solid var(--border)}
+.menu-table td{padding:12px 16px;border-bottom:1px solid var(--border);font-size:15px;font-weight:500;color:var(--g1);vertical-align:middle}
+.menu-table tr{transition:none}
+.menu-table tr:hover{background:#fafdfb}
+.menu-table tr.stock-out-row{background:rgba(192,57,43,0.02)}
+.menu-table tr.stock-out-row td{color:#7f8c8d}
+
+.item-code{background:var(--g6);color:var(--g3);padding:2px 6px;border-radius:4px;font-size:12px;font-weight:700}
+.item-name-col{display:flex;align-items:center;gap:6px;font-weight:600}
+.item-type-dot{width:9px;height:9px;border:1.5px solid var(--border2);border-radius:2px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.item-type-dot::after{content:'';width:4px;height:4px;border-radius:50%;background:var(--danger)}
+.item-type-dot.veg::after{background:#16a34a}
+.item-price{font-weight:700;font-variant-numeric:tabular-nums}
+
+/* Badges */
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:12px;font-weight:700;line-height:1.4;white-space:nowrap}
+.badge-instock{background:#d1fae5;color:#064e3b}
+.badge-stockout{background:var(--danger-bg);color:var(--danger)}
+
+/* Toggle Switch Styles */
+.switch{position:relative;display:inline-block;width:34px;height:20px}
+.switch input{opacity:0;width:0;height:0}
+.slider{position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background-color:#ccc;transition:transform .2s, background-color .2s;border-radius:20px}
+.slider:before{position:absolute;content:"";height:14px;width:14px;left:3px;bottom:3px;background-color:white;transition:transform .2s;border-radius:50%}
+input:checked + .slider{background-color:var(--g4)}
+input:checked + .slider:before{transform:translateX(14px)}
+
+/* Quick toggle stock button */
+.btn-stock-toggle{padding:5px 10px;font-size:12px;font-weight:700;border-radius:6px;cursor:pointer;border:1.5px solid var(--border);background:var(--white);display:flex;align-items:center;gap:4px;transition:none}
+.btn-stock-toggle.instock{color:#16a34a;border-color:#b9f6ca;background:#f0fdf4}
+.btn-stock-toggle.stockout{color:var(--danger);border-color:#ffcdd2;background:#ffebee}
+
+.btn-icon{width:28px;height:28px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:6px;border:1.5px solid var(--border);background:var(--white);color:var(--text2);cursor:pointer;transition:none}
+.btn-icon:hover{background:var(--bg);color:var(--g1)}
+.btn-icon.btn-delete:hover{color:var(--danger);border-color:#ffcdd2;background:#ffebee}
+
+/* ── MODALS ── */
+.modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(5,31,32,0.4);display:flex;align-items:center;justify-content:center;z-index:999;opacity:0;pointer-events:none;transition:opacity .2s ease}
+.modal-overlay.open{opacity:1;pointer-events:all}
+.modal-card{background:var(--white);border-radius:var(--rl);box-shadow:var(--sh-md);width:100%;max-width:420px;display:flex;flex-direction:column;overflow:hidden;transform:scale(0.95);transition:transform .2s ease}
+.modal-overlay.open .modal-card{transform:scale(1)}
+.modal-header{background:var(--g2);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;color:#fff}
+.modal-header h3{font-size:14px;font-weight:700}
+.modal-header i{font-size:18px;cursor:pointer;opacity:0.8;transition:opacity .12s}
+.modal-header i:hover{opacity:1}
+.modal-body{padding:16px;display:flex;flex-direction:column;gap:12px}
+.form-group{display:flex;flex-direction:column;gap:4px}
+.form-group label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase}
+.form-control{width:100%;background:var(--bg);border:1.5px solid var(--border);border-radius:var(--r);padding:8px 12px;font-size:12px;font-family:inherit;color:var(--text);outline:none;transition:border-color .12s}
+.form-control:focus{border-color:var(--border2)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.modal-footer{padding:12px 16px;border-top:1.5px solid var(--border);background:#fafdfb;display:flex;justify-content:flex-end;gap:8px}
+
+/* Toast styling */
+.toast-wrap{position:fixed;top:14px;right:14px;z-index:999;display:flex;flex-direction:column;gap:6px;pointer-events:none}
+.toast{background:var(--white);border:1.5px solid var(--border);border-radius:var(--rl);padding:10px 14px;min-width:250px;max-width:310px;box-shadow:var(--sh-md);display:flex;align-items:center;gap:9px;font-size:12px;font-weight:500;animation:tIn .2s ease;pointer-events:all;border-left:3px solid var(--g5)}
+.toast.warn{border-left-color:var(--warn)}.toast.err{border-left-color:var(--danger)}
+.toast i{font-size:17px;flex-shrink:0}
+.toast.ok i{color:var(--g5)}.toast.warn i{color:var(--warn)}.toast.err i{color:var(--danger)}
+@keyframes tIn{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
+.disable-hover, .disable-hover * {pointer-events: none !important;}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- SIDEBAR (Not used inside embedded view to prevent redundant nested sidebars) -->
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- TOPBAR -->
+    <header class="topbar">
+      <div class="tb-brand">
+        <div class="name">Surabhi SmartDine — Menu Management</div>
+        <div class="sub">Live Database Catalog Control Panel</div>
+      </div>
+      
+      <div class="live-badge">
+        <span class="live-dot"></span>
+        <span>CONNECTED DB</span>
+      </div>
+
+      <div class="tb-r">
+        <div class="ibt" onclick="toast('Refresh successful','ok'); refreshUI()"><i class="ti ti-refresh"></i></div>
+        <div class="dv"></div>
+        <div class="av" id="user-avatar" style="background:var(--g4)">M</div>
+        <div>
+          <div class="uname" id="user-name">Manager / Admin</div>
+          <div class="urole" id="user-role">Menu Control Unit</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- CONTENT -->
+    <div class="content">
+
+      <!-- STATS BANNER -->
+      <section class="stats-banner">
+        <div class="stat-card">
+          <div class="stat-info">
+            <span class="stat-title">Total Database Items</span>
+            <span class="stat-value" id="stat-total-items">0</span>
+            <span class="stat-desc">Entire food catalog</span>
+          </div>
+          <div class="stat-icon"><i class="ti ti-database"></i></div>
+        </div>
+        <div class="stat-card sc-today">
+          <div class="stat-info">
+            <span class="stat-title">Active Today's Menu</span>
+            <span class="stat-value" id="stat-active-today">0</span>
+            <span class="stat-desc">Selectable by waiters</span>
+          </div>
+          <div class="stat-icon"><i class="ti ti-tools-kitchen-2"></i></div>
+        </div>
+        <div class="stat-card sc-stockout">
+          <div class="stat-info">
+            <span class="stat-title">Stock Out Items</span>
+            <span class="stat-value" id="stat-stock-out" style="color:var(--danger)">0</span>
+            <span class="stat-desc">Marked unavailable in kitchen</span>
+          </div>
+          <div class="stat-icon"><i class="ti ti-alert-triangle"></i></div>
+        </div>
+        <div class="stat-card sc-veg">
+          <div class="stat-info">
+            <span class="stat-title">Veg Specials</span>
+            <span class="stat-value" id="stat-veg-items" style="color:#16a34a">0</span>
+            <span class="stat-desc">Pure vegetarian options</span>
+          </div>
+          <div class="stat-icon"><i class="ti ti-leaf"></i></div>
+        </div>
+      </section>
+
+      <!-- FILTER & CONTROL BAR -->
+      <section class="menu-controls">
+        <div class="filter-row">
+          <div class="search-box">
+            <i class="ti ti-search"></i>
+            <input type="text" id="search-input" placeholder="Search by item name or unique code..." oninput="filterItems()">
+          </div>
+
+          <div class="ws-select">
+            <i class="ti ti-layout-grid"></i>
+            <select id="category-filter" onchange="filterItems()">
+              <option value="ALL">All Categories</option>
+              <option value="Starters">Starters</option>
+              <option value="Main Course">Main Course</option>
+              <option value="Breads">Breads</option>
+              <option value="Sides">Sides</option>
+            </select>
+          </div>
+
+          <div class="ws-select">
+            <i class="ti ti-calendar-event"></i>
+            <select id="todays-filter" onchange="filterItems()">
+              <option value="ALL">All Menu Availability</option>
+              <option value="TODAY">Active in Today's Menu</option>
+              <option value="OTHER">Not Active Today</option>
+            </select>
+          </div>
+
+          <div class="ws-select">
+            <i class="ti ti-package-export"></i>
+            <select id="stock-filter" onchange="filterItems()">
+              <option value="ALL">All Stock Status</option>
+              <option value="INSTOCK">In Stock Only</option>
+              <option value="STOCKOUT">Stock Out Only</option>
+            </select>
+          </div>
+
+          <button class="btn btn-p" onclick="openAddModal()" style="margin-left:auto"><i class="ti ti-plus"></i> Add Menu Item</button>
+        </div>
+      </section>
+
+      <!-- MENU TABLE CARD -->
+      <section class="menu-table-card">
+        <div class="menu-table-wrapper">
+          <table class="menu-table">
+            <thead>
+              <tr>
+                <th>Code</th>
+                <th>Item Name</th>
+                <th>Category</th>
+                <th style="text-align:right">Price</th>
+                <th style="text-align:center">Today's Menu</th>
+                <th style="text-align:center">Stock Status</th>
+                <th style="text-align:center;width:80px">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="menu-tbody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<!-- ADD/EDIT MODAL -->
+<div class="modal-overlay" id="item-modal">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 id="modal-title">Add New Menu Item</h3>
+      <i class="ti ti-x" onclick="closeModal()"></i>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-idx">
+      <div class="form-group">
+        <label>Item Name</label>
+        <input type="text" id="form-name" class="form-control" placeholder="e.g. Garlic Naan">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Unique Code</label>
+          <input type="text" id="form-code" class="form-control" placeholder="e.g. GN">
+        </div>
+        <div class="form-group">
+          <label>Category</label>
+          <select id="form-category" class="form-control">
+            <option value="Starters">Starters</option>
+            <option value="Main Course">Main Course</option>
+            <option value="Breads">Breads</option>
+            <option value="Sides">Sides</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Price (₹)</label>
+          <input type="number" id="form-price" class="form-control" placeholder="e.g. 120">
+        </div>
+        <div class="form-group">
+          <label>Dietary Type</label>
+          <select id="form-veg" class="form-control">
+            <option value="true">Veg</option>
+            <option value="false">Non-Veg</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-p" onclick="saveItem()">Save Item</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOASTS WRAPPER -->
+<div class="toast-wrap" id="toast-wrapper"></div>
+
+<script>
+// Default menu items list (empty for live custom sync)
+const defaultItems = [];
+
+let menuItems = [];
+
+// Initialize database with javaApp bridge or local storage fallback
+function initDatabase() {
+  // Clear any old mock local storage data
+  if (localStorage.getItem("surabhi_menu_items") && localStorage.getItem("surabhi_menu_items").includes("Masala Papad")) {
+    localStorage.removeItem("surabhi_menu_items");
+  }
+
+  if (window.javaApp) {
+    try {
+      menuItems = JSON.parse(window.javaApp.getMenuItemsJson());
+      return;
+    } catch (e) {
+      console.error("Failed to fetch menu items from javaApp:", e);
+    }
+  }
+  try {
+    const stored = localStorage.getItem("surabhi_menu_items");
+    if (stored) {
+      menuItems = JSON.parse(stored);
+    } else {
+      menuItems = [...defaultItems];
+      localStorage.setItem("surabhi_menu_items", JSON.stringify(menuItems));
+    }
+  } catch (e) {
+    console.warn("localStorage not available, falling back to memory database.", e);
+    menuItems = [...defaultItems];
+  }
+}
+
+// Save database and dispatch update event with sandbox try-catch
+function saveDatabase() {
+  try {
+    localStorage.setItem("surabhi_menu_items", JSON.stringify(menuItems));
+  } catch (e) {
+    console.warn("localStorage save failed", e);
+  }
+  // Dispatch custom storage event for same-tab updates
+  window.dispatchEvent(new Event('storage'));
+}
+
+// Load and render
+function refreshUI() {
+  initDatabase();
+  updateStats();
+  renderTable();
+}
+
+function updateStats() {
+  document.getElementById("stat-total-items").innerText = menuItems.length;
+  document.getElementById("stat-active-today").innerText = menuItems.filter(i => i.isTodaysMenu).length;
+  document.getElementById("stat-stock-out").innerText = menuItems.filter(i => !i.inStock).length;
+  document.getElementById("stat-veg-items").innerText = menuItems.filter(i => i.veg).length;
+}
+
+let _renderPending = false;
+function renderTable() {
+  // Debounce via rAF — prevents multiple reflows on rapid keystrokes
+  if (_renderPending) return;
+  _renderPending = true;
+  requestAnimationFrame(() => {
+    _renderPending = false;
+    _doRenderTable();
+  });
+}
+
+function _doRenderTable() {
+  const tbody = document.getElementById("menu-tbody");
+
+  const search = document.getElementById("search-input").value.toLowerCase().trim();
+  const category = document.getElementById("category-filter").value;
+  const todays = document.getElementById("todays-filter").value;
+  const stock = document.getElementById("stock-filter").value;
+
+  // Build all rows into a fragment — single DOM write, zero reflow per row
+  const frag = document.createDocumentFragment();
+  let count = 0;
+
+  menuItems.forEach((item, index) => {
+    if (search && !item.name.toLowerCase().includes(search) && !(item.id || "").toLowerCase().includes(search)) return;
+    if (category !== "ALL" && item.category !== category) return;
+    if (todays === "TODAY" && !item.isTodaysMenu) return;
+    if (todays === "OTHER" && item.isTodaysMenu) return;
+    if (stock === "INSTOCK" && !item.inStock) return;
+    if (stock === "STOCKOUT" && item.inStock) return;
+
+    const row = document.createElement("tr");
+    if (!item.inStock) row.className = "stock-out-row";
+
+    row.innerHTML = `
+      <td><span class="item-code">${item.id || ''}</span></td>
+      <td>
+        <div class="item-name-col">
+          <span class="item-type-dot ${item.veg ? 'veg' : ''}"></span>
+          <span>${item.name}</span>
+        </div>
+      </td>
+      <td><span style="font-weight:600;color:var(--text2)">${item.category || ''}</span></td>
+      <td style="text-align:right" class="item-price">₹${parseFloat(item.price || 0).toFixed(2)}</td>
+      <td style="text-align:center">
+        <label class="switch">
+          <input type="checkbox" ${item.isTodaysMenu ? 'checked' : ''} onchange="toggleToday(${index}, this.checked)">
+          <span class="slider"></span>
+        </label>
+      </td>
+      <td style="text-align:center">
+        <button class="btn-stock-toggle ${item.inStock ? 'instock' : 'stockout'}" onclick="toggleStock(${index})">
+          <i class="ti ${item.inStock ? 'ti-circle-check' : 'ti-circle-x'}"></i>
+          <span>${item.inStock ? 'In Stock' : 'Stock Out'}</span>
+        </button>
+      </td>
+      <td style="text-align:center">
+        <div style="display:flex;align-items:center;justify-content:center;gap:6px">
+          <button class="btn-icon" onclick="openEditModal(${index})"><i class="ti ti-edit"></i></button>
+          <button class="btn-icon btn-delete" onclick="deleteItem(${index})"><i class="ti ti-trash"></i></button>
+        </div>
+      </td>
+    `;
+    frag.appendChild(row);
+    count++;
+  });
+
+  // Single DOM write — swap old tbody content for the new fragment
+  tbody.innerHTML = "";
+  if (count === 0) {
+    const empty = document.createElement("tr");
+    empty.innerHTML = `<td colspan="7" style="text-align:center;padding:24px;color:var(--muted);font-size:12px"><i class="ti ti-mood-empty" style="font-size:20px;display:block;margin-bottom:6px"></i>No items match your filters</td>`;
+    tbody.appendChild(empty);
+  } else {
+    tbody.appendChild(frag);
+  }
+}
+
+let _filterTimer = null;
+function filterItems() {
+  // Additional debounce for search input — avoids firing on every keystroke
+  clearTimeout(_filterTimer);
+  _filterTimer = setTimeout(renderTable, 60);
+}
+
+
+
+// Toggles
+function toggleToday(index, active) {
+  const item = menuItems[index];
+  item.isTodaysMenu = active;
+  updateStats();
+  if (window.javaApp && item.dbId) {
+    try {
+      window.javaApp.toggleTodayStatus(item.dbId, active);
+      toast(`${item.name} ${active ? 'added to' : 'removed from'} Today's Menu`, 'ok');
+      return;
+    } catch (e) {
+      console.error("Failed to toggle today status in javaApp:", e);
+    }
+  }
+  saveDatabase();
+  toast(`${item.name} ${active ? 'added to' : 'removed from'} Today's Menu`, 'ok');
+}
+
+// Toggle Stock Status
+function toggleStock(index) {
+  const item = menuItems[index];
+  const current = item.inStock;
+  item.inStock = !current;
+  
+  // Find the button inside the active rendered table row to update status instantly
+  const rows = document.querySelectorAll("#menu-tbody tr");
+  let btn = null;
+  for (let row of rows) {
+    // Find the row that matches this item index or name
+    const nameCol = row.querySelector(".item-name-col span:last-child");
+    if (nameCol && nameCol.innerText.trim() === item.name.trim()) {
+      btn = row.querySelector(".btn-stock-toggle");
+      break;
+    }
+  }
+  
+  if (btn) {
+    btn.className = `btn-stock-toggle ${!current ? 'instock' : 'stockout'}`;
+    const icon = btn.querySelector("i");
+    if (icon) icon.className = `ti ${!current ? 'ti-circle-check' : 'ti-circle-x'}`;
+    const span = btn.querySelector("span");
+    if (span) span.innerText = !current ? 'In Stock' : 'Stock Out';
+  }
+  
+  updateStats();
+  
+  if (window.javaApp && item.dbId) {
+    try {
+      window.javaApp.toggleStockStatus(item.dbId, !current);
+      toast(`${item.name} marked ${!current ? 'In Stock' : 'Stock Out'}`, 'ok');
+      return;
+    } catch (e) {
+      console.error("Failed to toggle stock status in javaApp:", e);
+    }
+  }
+  saveDatabase();
+  toast(`${item.name} marked ${!current ? 'In Stock' : 'Stock Out'}`, 'ok');
+}
+
+// CRUD operations
+function openAddModal() {
+  document.getElementById("modal-title").innerText = "Add New Menu Item";
+  document.getElementById("edit-idx").value = "";
+  document.getElementById("form-name").value = "";
+  document.getElementById("form-code").value = "";
+  document.getElementById("form-category").value = "Starters";
+  document.getElementById("form-price").value = "150";
+  document.getElementById("form-veg").value = "true";
+  
+  document.getElementById("item-modal").classList.add("open");
+}
+
+// Update form code with dbId mapping
+function openEditModal(index) {
+  const item = menuItems[index];
+  document.getElementById("modal-title").innerText = "Edit Menu Item";
+  document.getElementById("edit-idx").value = index;
+  document.getElementById("form-name").value = item.name;
+  document.getElementById("form-code").value = item.id;
+  document.getElementById("form-code").disabled = true; // Lock code in edit mode
+  document.getElementById("form-category").value = item.category;
+  document.getElementById("form-price").value = item.price;
+  document.getElementById("form-veg").value = item.veg.toString();
+  
+  document.getElementById("item-modal").classList.add("open");
+}
+
+function closeModal() {
+  document.getElementById("item-modal").classList.remove("open");
+  document.getElementById("form-code").disabled = false;
+}
+
+function saveItem() {
+  const idxVal = document.getElementById("edit-idx").value;
+  const name = document.getElementById("form-name").value.trim();
+  const code = document.getElementById("form-code").value.trim().toUpperCase();
+  const category = document.getElementById("form-category").value;
+  const price = parseFloat(document.getElementById("form-price").value);
+  const veg = document.getElementById("form-veg").value === "true";
+
+  if (!name || !code || isNaN(price)) {
+    toast("Please fill in all fields correctly.", "err");
+    return;
+  }
+
+  let dbId = "";
+  let isTodaysMenu = true;
+  let inStock = true;
+
+  if (idxVal !== "") {
+    const index = parseInt(idxVal);
+    dbId = menuItems[index].dbId || "";
+    isTodaysMenu = menuItems[index].isTodaysMenu;
+    inStock = menuItems[index].inStock;
+  }
+
+  const payload = {
+    dbId: dbId,
+    id: code,
+    name: name,
+    category: category,
+    price: price,
+    veg: veg,
+    isTodaysMenu: isTodaysMenu,
+    inStock: inStock
+  };
+
+  if (window.javaApp) {
+    try {
+      const responseStr = window.javaApp.saveMenuItemJson(JSON.stringify(payload));
+      const response = JSON.parse(responseStr);
+      if (response.error) {
+        toast("Error saving item: " + response.error, "err");
+      } else {
+        toast(`${idxVal === "" ? 'Added' : 'Updated'} "${name}" successfully!`, "ok");
+        closeModal();
+        refreshUI();
+      }
+      return;
+    } catch (e) {
+      console.error("Failed to save menu item in javaApp:", e);
+    }
+  }
+
+  if (idxVal === "") {
+    if (menuItems.some(i => i.id === code)) {
+      toast("Unique code already exists!", "err");
+      return;
+    }
+    menuItems.push({
+      id: code,
+      name: name,
+      category: category,
+      price: price,
+      veg: veg,
+      isTodaysMenu: true,
+      inStock: true
+    });
+    toast(`Added "${name}" successfully!`, "ok");
+  } else {
+    const index = parseInt(idxVal);
+    menuItems[index].name = name;
+    menuItems[index].category = category;
+    menuItems[index].price = price;
+    menuItems[index].veg = veg;
+    toast(`Updated "${name}" successfully!`, "ok");
+  }
+
+  saveDatabase();
+  closeModal();
+  refreshUI();
+}
+
+function deleteItem(index) {
+  const item = menuItems[index];
+  const name = item.name;
+  if (confirm(`Are you sure you want to delete ${name}?`)) {
+    if (window.javaApp && item.dbId) {
+      try {
+        const ok = window.javaApp.deleteMenuItem(item.dbId);
+        if (ok) {
+          refreshUI();
+          toast(`Deleted "${name}"`, "warn");
+          return;
+        }
+      } catch (e) {
+        console.error("Failed to delete item in javaApp:", e);
+      }
+    }
+    menuItems.splice(index, 1);
+    saveDatabase();
+    refreshUI();
+    toast(`Deleted "${name}"`, "warn");
+  }
+}
+
+// Toast
+// Optimized toast timing
+function toast(msg, type='ok') {
+  const wrap = document.getElementById("toast-wrapper");
+  const t = document.createElement("div");
+  t.className = `toast ${type}`;
+  let icon = 'ti-circle-check';
+  if(type==='warn') icon='ti-alert-triangle';
+  if(type==='err') icon='ti-circle-x';
+  t.innerHTML = `<i class="ti ${icon}"></i><span>${msg}</span>`;
+  wrap.appendChild(t);
+  setTimeout(()=>t.remove(), 2500);
+}
+
+// Watch localStorage changes to sync stats immediately if modified in other views (like KDS Stock Panel)
+window.addEventListener('storage', () => {
+  initDatabase();
+  updateStats();
+  renderTable();
+});
+
+// Initial load
+initDatabase();
+refreshUI();
+
+// Global ⌘K focus for search bar
+window.addEventListener('keydown', e => {
+  if((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    e.preventDefault();
+    document.getElementById("search-input").focus();
+  }
+});
+</script>
+</body>
+</html>

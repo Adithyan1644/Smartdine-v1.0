@@ -1,0 +1,261 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.shape.*?>
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.Group?>
+
+<VBox spacing="15.0" style="-fx-background-color: #F0F4F2;" stylesheets="@dashboard.css" VBox.vgrow="ALWAYS" xmlns="http://javafx.com/javafx/8" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.smartdine.controller.UiKdsController">
+   <children>
+      
+      <!-- 1. KITCHEN STATS BANNER (5 Premium Cards) -->
+      <GridPane hgap="12.0" vgap="0.0">
+         <columnConstraints>
+            <ColumnConstraints hgrow="ALWAYS" percentWidth="20.0" />
+            <ColumnConstraints hgrow="ALWAYS" percentWidth="20.0" />
+            <ColumnConstraints hgrow="ALWAYS" percentWidth="20.0" />
+            <ColumnConstraints hgrow="ALWAYS" percentWidth="20.0" />
+            <ColumnConstraints hgrow="ALWAYS" percentWidth="20.0" />
+         </columnConstraints>
+         <children>
+            <!-- Card 1: Active Tickets -->
+            <HBox alignment="CENTER_LEFT" spacing="12.0" styleClass="kds-stat-card, active" GridPane.columnIndex="0">
+               <children>
+                  <VBox alignment="CENTER_LEFT" spacing="3.0" HBox.hgrow="ALWAYS">
+                     <children>
+                        <Label text="ACTIVE TICKETS" style="-fx-font-size: 11px; -fx-font-weight: 800; -fx-text-fill: #64748B; -fx-text-transform: uppercase;" />
+                        <Label fx:id="activeTicketsLabel" text="3" style="-fx-font-size: 28px; -fx-font-weight: 900; -fx-text-fill: #0F172A; -fx-letter-spacing: -1;" />
+                        <Label text="Cooking or awaiting prep" style="-fx-font-size: 11px; -fx-text-fill: #64748B;" />
+                     </children>
+                  </VBox>
+                  <StackPane prefHeight="46.0" prefWidth="46.0" style="-fx-background-color: #eff6ff; -fx-background-radius: 23px;">
+                     <children>
+                        <SVGPath content="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" fill="transparent" stroke="#2563EB" strokeWidth="2.0" strokeLineCap="ROUND" strokeLineJoin="ROUND" scaleX="1.1" scaleY="1.1" />
+                     </children>
+                  </StackPane>
+               </children>
+            </HBox>
+
+            <!-- Card 2: Avg Prep Time -->
+            <HBox alignment="CENTER_LEFT" spacing="12.0" styleClass="kds-stat-card, avg" GridPane.columnIndex="1">
+               <children>
+                  <VBox alignment="CENTER_LEFT" spacing="3.0" HBox.hgrow="ALWAYS">
+                     <children>
+                        <Label text="AVG PREP TIME" style="-fx-font-size: 11px; -fx-font-weight: 800; -fx-text-fill: #64748B; -fx-text-transform: uppercase;" />
+                        <HBox alignment="BASELINE_LEFT">
+                           <children>
+                              <Label fx:id="avgPrepTimeLabel" text="13.8" style="-fx-font-size: 28px; -fx-font-weight: 900; -fx-text-fill: #0F172A; -fx-letter-spacing: -1;" />
+                              <Label text=" mins" style="-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #64748B;" />
+                           </children>
+                        </HBox>
+                        <Label text="Target: 15 mins" style="-fx-font-size: 11px; -fx-text-fill: #64748B;" />
+                     </children>
+                  </VBox>
+                  <StackPane prefHeight="46.0" prefWidth="46.0" style="-fx-background-color: #f0fdf4; -fx-background-radius: 23px;">
+                     <children>
+                        <SVGPath content="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" fill="transparent" stroke="#0B2B26" strokeWidth="2.0" strokeLineCap="ROUND" strokeLineJoin="ROUND" scaleX="1.1" scaleY="1.1" />
+                     </children>
+                  </StackPane>
+               </children>
+            </HBox>
+
+            <!-- Card 3: Ready Items -->
+            <HBox alignment="CENTER_LEFT" spacing="12.0" styleClass="kds-stat-card, ready" GridPane.columnIndex="2">
+               <children>
+                  <VBox alignment="CENTER_LEFT" spacing="3.0" HBox.hgrow="ALWAYS">
+                     <children>
+                        <Label text="READY ITEMS" style="-fx-font-size: 11px; -fx-font-weight: 800; -fx-text-fill: #64748B; -fx-text-transform: uppercase;" />
+                        <Label fx:id="readyItemsLabel" text="1" style="-fx-font-size: 28px; -fx-font-weight: 900; -fx-text-fill: #0F172A; -fx-letter-spacing: -1;" />
+                        <Label text="Ready to serve" style="-fx-font-size: 11px; -fx-text-fill: #64748B;" />
+                     </children>
+                  </VBox>
+                  <StackPane prefHeight="46.0" prefWidth="46.0" style="-fx-background-color: #f0fdf4; -fx-background-radius: 23px;">
+                     <children>
+                        <SVGPath content="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" fill="transparent" stroke="#10B981" strokeWidth="2.0" strokeLineCap="ROUND" strokeLineJoin="ROUND" scaleX="1.1" scaleY="1.1" />
+                     </children>
+                  </StackPane>
+               </children>
+            </HBox>
+
+            <!-- Card 4: Delayed Tickets -->
+            <HBox alignment="CENTER_LEFT" spacing="12.0" styleClass="kds-stat-card, delayed" GridPane.columnIndex="3">
+               <children>
+                  <VBox alignment="CENTER_LEFT" spacing="3.0" HBox.hgrow="ALWAYS">
+                     <children>
+                        <Label text="DELAYED TICKETS" style="-fx-font-size: 11px; -fx-font-weight: 800; -fx-text-fill: #64748B; -fx-text-transform: uppercase;" />
+                        <Label fx:id="delayedOrdersLabel" text="0" style="-fx-font-size: 28px; -fx-font-weight: 900; -fx-text-fill: #EF4444; -fx-letter-spacing: -1;" />
+                        <Label text="Exceeded 10m mark" style="-fx-font-size: 11px; -fx-text-fill: #64748B;" />
+                     </children>
+                  </VBox>
+                  <StackPane prefHeight="46.0" prefWidth="46.0" style="-fx-background-color: #fee2e2; -fx-background-radius: 23px;">
+                     <children>
+                        <SVGPath content="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" fill="transparent" stroke="#EF4444" strokeWidth="2.0" strokeLineCap="ROUND" strokeLineJoin="ROUND" scaleX="1.1" scaleY="1.1" />
+                     </children>
+                  </StackPane>
+               </children>
+            </HBox>
+
+            <!-- Card 5: Completed Today -->
+            <HBox alignment="CENTER_LEFT" spacing="12.0" styleClass="kds-stat-card, completed" GridPane.columnIndex="4">
+               <children>
+                  <VBox alignment="CENTER_LEFT" spacing="3.0" HBox.hgrow="ALWAYS">
+                     <children>
+                        <Label text="COMPLETED TODAY" style="-fx-font-size: 11px; -fx-font-weight: 800; -fx-text-fill: #64748B; -fx-text-transform: uppercase;" />
+                        <Label fx:id="completedTodayLabel" text="48" style="-fx-font-size: 28px; -fx-font-weight: 900; -fx-text-fill: #0F172A; -fx-letter-spacing: -1;" />
+                        <Label text="Served kitchen orders" style="-fx-font-size: 11px; -fx-text-fill: #64748B;" />
+                     </children>
+                  </VBox>
+                  <StackPane prefHeight="46.0" prefWidth="46.0" style="-fx-background-color: #f5f3ff; -fx-background-radius: 23px;">
+                     <children>
+                        <SVGPath content="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" fill="transparent" stroke="#7C3AED" strokeWidth="2.0" strokeLineCap="ROUND" strokeLineJoin="ROUND" scaleX="1.1" scaleY="1.1" />
+                     </children>
+                  </StackPane>
+               </children>
+            </HBox>
+         </children>
+      </GridPane>
+
+      <!-- 2. SPLIT WORKSPACE -->
+      <HBox spacing="15.0" VBox.vgrow="ALWAYS">
+         <children>
+            
+            <!-- LEFT WORKSPACE: QUEUE & FILTERS -->
+            <VBox spacing="0.0" styleClass="card-bg" HBox.hgrow="ALWAYS">
+               <children>
+                  <!-- Filter bar with Station combo and search bar -->
+                  <HBox alignment="CENTER_LEFT" spacing="15.0" style="-fx-background-color: #FAFDFB; -fx-padding: 12 16; -fx-border-color: #E2E8F0; -fx-border-width: 0 0 1.5 0;">
+                     <children>
+                        <HBox alignment="CENTER_LEFT" spacing="8.0">
+                           <children>
+                              <Label text="STATION FILTER:" style="-fx-font-size: 11px; -fx-font-weight: 800; -fx-text-fill: #64748B; -fx-text-transform: uppercase;" />
+                              <ComboBox fx:id="stationFilter" prefWidth="150.0" style="-fx-background-color: white; -fx-border-color: #E2E8F0; -fx-border-radius: 8; -fx-background-radius: 8;" />
+                           </children>
+                        </HBox>
+                        <Region HBox.hgrow="ALWAYS" />
+                        <HBox alignment="CENTER_LEFT" spacing="8.0" style="-fx-background-color: white; -fx-background-radius: 8px; -fx-border-radius: 8px; -fx-border-color: #E2E8F0; -fx-border-width: 1px; -fx-padding: 4 10;">
+                           <children>
+                              <SVGPath content="M11 19a8 8 0 100-16 8 8 0 000 16z M21 21l-4.35-4.35" fill="transparent" stroke="#64748B" strokeWidth="2.0" scaleX="0.9" scaleY="0.9" />
+                              <TextField fx:id="searchField" promptText="Search tickets, tables, items..." style="-fx-background-color: transparent; -fx-border-color: transparent; -fx-padding: 0; -fx-text-fill: #0F172A;" prefWidth="220.0" />
+                           </children>
+                        </HBox>
+                     </children>
+                  </HBox>
+
+                  <!-- Tabs filter row -->
+                  <HBox alignment="CENTER_LEFT" style="-fx-background-color: #FAFDFB; -fx-border-color: #E2E8F0; -fx-border-width: 0 0 1.5 0;">
+                     <children>
+                        <Button fx:id="allTabBtn" text="ALL TICKETS" onAction="#handleTabClick" styleClass="kds-tab-btn, active">
+                           <graphic>
+                              <Label fx:id="allCountBadge" text="4" styleClass="kds-badge-active" />
+                           </graphic>
+                        </Button>
+                        <Button fx:id="pendingTabBtn" text="PENDING" onAction="#handleTabClick" styleClass="kds-tab-btn">
+                           <graphic>
+                              <Label fx:id="pendingCountBadge" text="1" styleClass="kds-badge-inactive" />
+                           </graphic>
+                        </Button>
+                        <Button fx:id="preparingTabBtn" text="PREPARING" onAction="#handleTabClick" styleClass="kds-tab-btn">
+                           <graphic>
+                              <Label fx:id="preparingCountBadge" text="2" styleClass="kds-badge-inactive" />
+                           </graphic>
+                        </Button>
+                        <Button fx:id="readyTabBtn" text="READY" onAction="#handleTabClick" styleClass="kds-tab-btn">
+                           <graphic>
+                              <Label fx:id="readyCountBadge" text="1" styleClass="kds-badge-inactive" />
+                           </graphic>
+                        </Button>
+                        <Button fx:id="delayedTabBtn" text="DELAYED" onAction="#handleTabClick" styleClass="kds-tab-btn" style="-fx-text-fill: #EF4444;">
+                           <graphic>
+                              <Label fx:id="delayedCountBadge" text="1" styleClass="kds-badge-delayed-inactive" />
+                           </graphic>
+                        </Button>
+                     </children>
+                     <padding>
+                        <Insets left="16.0" right="16.0" />
+                     </padding>
+                  </HBox>
+
+                  <!-- Scrollable Grid Container -->
+                  <ScrollPane fitToWidth="true" style="-fx-background-color: transparent; -fx-background: transparent; -fx-padding: 12;" VBox.vgrow="ALWAYS">
+                     <content>
+                        <FlowPane fx:id="kotCardsContainer" hgap="12.0" vgap="12.0" />
+                     </content>
+                  </ScrollPane>
+               </children>
+            </VBox>
+
+            <!-- RIGHT WORKSPACE: PULSE &live stock -->
+            <VBox spacing="12.0" prefWidth="320.0" minWidth="320.0" maxWidth="320.0">
+               <children>
+                  <!-- Card: KDS Kitchen Pulse -->
+                  <VBox alignment="CENTER" spacing="8.0" styleClass="card-bg" style="-fx-padding: 14;">
+                     <children>
+                        <HBox alignment="CENTER" spacing="5.0">
+                           <children>
+                              <SVGPath content="M4 12h3l2-6 3 12 2-9 2 5h3" fill="transparent" stroke="#EF4444" strokeWidth="2.0" strokeLineCap="ROUND" strokeLineJoin="ROUND" />
+                              <Label text="KDS KITCHEN PULSE" style="-fx-font-size: 14px; -fx-font-weight: 800; -fx-text-fill: #051F20; -fx-letter-spacing: 0.8;" />
+                           </children>
+                        </HBox>
+                        
+                        <StackPane prefHeight="90.0" prefWidth="160.0" style="-fx-alignment: BOTTOM_CENTER;">
+                            <children>
+                               <Group StackPane.alignment="BOTTOM_CENTER">
+                                  <children>
+                                     <Arc centerX="0.0" centerY="0.0" radiusX="70.0" radiusY="70.0" startAngle="180.0" length="-180.0" fill="TRANSPARENT" stroke="#E2E8F0" strokeWidth="10.0" strokeLineCap="ROUND" />
+                                     <Arc fx:id="pulseArc" centerX="0.0" centerY="0.0" radiusX="70.0" radiusY="70.0" startAngle="180.0" length="0.0" fill="TRANSPARENT" stroke="#FB923C" strokeWidth="10.0" strokeLineCap="ROUND" />
+                                  </children>
+                               </Group>
+                               <VBox alignment="CENTER" style="-fx-padding: 22 0 0 0;" StackPane.alignment="CENTER">
+                                 <children>
+                                    <Label fx:id="pulsePercentageLabel" text="0%" styleClass="pulse-percentage" />
+                                    <Label fx:id="pulseStatusLabel" text="OPTIMAL LOAD" styleClass="pulse-status" />
+                                 </children>
+                              </VBox>
+                           </children>
+                        </StackPane>
+                        <Label text="Cooking load vs. active chef stations" style="-fx-font-size: 11px; -fx-text-fill: #64748B;" />
+                     </children>
+                  </VBox>
+
+                  <!-- Card: Cumulative Dish Prep Queue -->
+                  <VBox spacing="8.0" styleClass="card-bg" style="-fx-padding: 12 14;" VBox.vgrow="ALWAYS">
+                     <children>
+                        <HBox alignment="CENTER_LEFT" spacing="5.0">
+                           <children>
+                              <SVGPath content="M12 2a10 10 0 00-7.75 3.66A1 1 0 004 6.5v11a1 1 0 001 1h14a1 1 0 001-1v-11a1 1 0 00-.25-.84A10 10 0 0012 2zm-5 6h10v2H7V8zm0 4h10v2H7v-2z" fill="transparent" stroke="#0B2B26" strokeWidth="2.0" />
+                              <Label text="CUMULATIVE COOK QUEUE" style="-fx-font-size: 14px; -fx-font-weight: 800; -fx-text-fill: #051F20; -fx-letter-spacing: 0.8;" />
+                           </children>
+                        </HBox>
+                        <ScrollPane fitToWidth="true" style="-fx-background-color: transparent; -fx-background: transparent;" VBox.vgrow="ALWAYS">
+                           <content>
+                              <VBox fx:id="cumulativeQueueVBox" spacing="6.0" style="-fx-background-color: transparent;" />
+                           </content>
+                        </ScrollPane>
+                     </children>
+                  </VBox>
+
+                  <!-- Card: Today's Menu Stock Control Card -->
+                  <VBox spacing="8.0" styleClass="card-bg" style="-fx-padding: 12 14;" prefHeight="250.0">
+                     <children>
+                        <HBox alignment="CENTER_LEFT" spacing="5.0">
+                           <children>
+                              <SVGPath content="M12 3L2 8l10 5 10-5-10-5z M2 17l10 5 10-5 M2 12l10 5 10-5" fill="transparent" stroke="#EF4444" strokeWidth="2.0" />
+                              <Label text="KITCHEN STOCK PANEL" style="-fx-font-size: 14px; -fx-font-weight: 800; -fx-text-fill: #051F20; -fx-letter-spacing: 0.8;" />
+                              <Region HBox.hgrow="ALWAYS" />
+                              <Label text="Active Menu" style="-fx-font-size: 11px; -fx-text-fill: #64748B;" />
+                           </children>
+                        </HBox>
+                        <ListView fx:id="stockToggleListView" VBox.vgrow="ALWAYS" style="-fx-background-color: transparent; -fx-background: transparent; -fx-padding: 0;" />
+                     </children>
+                  </VBox>
+               </children>
+            </VBox>
+            
+         </children>
+      </HBox>
+   </children>
+   <padding>
+      <Insets top="15.0" right="15.0" bottom="15.0" left="15.0" />
+   </padding>
+</VBox>
