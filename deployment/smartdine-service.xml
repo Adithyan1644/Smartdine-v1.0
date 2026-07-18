@@ -1,0 +1,9 @@
+<service>
+  <id>smartdine-heart</id>
+  <name>SmartDine Heart Service</name>
+  <description>Self-healing local background service for the SmartDine POS backend application</description>
+  <executable>%BASE%\jre\bin\java.exe</executable>
+  <arguments>-jar "%BASE%\smartdine-heart.jar"</arguments>
+  <logmode>rotate</logmode>
+  <onfailure action="restart" delay="10 sec"/>
+</service>

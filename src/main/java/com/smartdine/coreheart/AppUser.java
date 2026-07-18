@@ -2,6 +2,8 @@ package com.smartdine.coreheart;
 
 import jakarta.persistence.*;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 @Entity
 @Table(name = "app_users")
 public class AppUser extends BaseEntity {
@@ -9,6 +11,7 @@ public class AppUser extends BaseEntity {
     @Column(unique = true, nullable = false)
     private String username;
 
+    @JsonIgnore
     @Column(nullable = false)
     private String password;
 

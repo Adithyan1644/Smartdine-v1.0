@@ -48,4 +48,8 @@ public class AuthService {
         String token = jwtUtil.generateToken(user.getUsername(), user.getRole().name(), user.getRestaurantId());
         return new AuthResponse(token, user.getRole().name(), user.getRestaurantId(), user.getFullName());
     }
+
+    public java.util.List<AppUser> getActiveWaiters(java.util.UUID restaurantId) {
+        return userRepository.findByRestaurantIdAndRoleAndIsActiveTrue(restaurantId, com.smartdine.coreheart.UserRole.WAITER);
+    }
 }

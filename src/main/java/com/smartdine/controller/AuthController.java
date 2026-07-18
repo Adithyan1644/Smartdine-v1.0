@@ -26,4 +26,9 @@ public class AuthController {
     public ResponseEntity<AuthResponse> pinLogin(@RequestBody PinLoginRequest request) {
         return ResponseEntity.ok(authService.authenticateWithPin(request));
     }
+
+    @GetMapping("/waiters")
+    public ResponseEntity<java.util.List<com.smartdine.coreheart.AppUser>> getWaiters(@RequestParam java.util.UUID restaurantId) {
+        return ResponseEntity.ok(authService.getActiveWaiters(restaurantId));
+    }
 }

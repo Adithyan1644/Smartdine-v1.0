@@ -93,6 +93,15 @@ public class MockCloudGatewayController {
         );
         response.put("modifierGroups", modifierGroups);
 
+        // Waiters
+        List<Map<String, Object>> waiters = List.of(
+            Map.of("name", "Ravi Kumar", "pin", "1001", "status", "Active"),
+            Map.of("name", "Suresh Babu", "pin", "1002", "status", "Active"),
+            Map.of("name", "Karthik M", "pin", "1003", "status", "Active"),
+            Map.of("name", "Pradeep S", "pin", "1004", "status", "Disabled")
+        );
+        response.put("waiters", waiters);
+
         return ResponseEntity.ok(response);
     }
 }
