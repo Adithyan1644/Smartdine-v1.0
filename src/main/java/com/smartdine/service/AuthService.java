@@ -52,4 +52,31 @@ public class AuthService {
     public java.util.List<AppUser> getActiveWaiters(java.util.UUID restaurantId) {
         return userRepository.findByRestaurantIdAndRoleAndIsActiveTrue(restaurantId, com.smartdine.coreheart.UserRole.WAITER);
     }
+
+    // Register a new waiter from the Admin Panel
+    public AppUser registerWaiter(String fullName, String username, String pin, java.util.UUID restaurantId) {
+        if (userRepository.findByUsername(username).isPresent()) {
+            throw new RuntimeException("Username '" + username + "' is already taken.");
+        }
+        if (pin == null || !pin.matches("\\d{4}")) {
+            throw new RuntimeException("PIN must be exactly 4 digits.");
+        }
+        AppUser waiter = new AppUser();
+        waiter.setFullName(fullName);
+        waiter.setUsername(username);
+        waiter.setPassword(passwordEncoder.encode(pin)); // Hash PIN as password too for compatibility
+        waiter.setPin(pin);
+        waiter.setRole(com.smartdine.coreheart.UserRole.WAITER);
+        waiter.setRestaurantId(restaurantId);
+        waiter.setActive(true);
+        return userRepository.save(waiter);
+    }
+
+    // Activate or deactivate a waiter account
+    public void setWaiterActive(java.util.UUID waiterId, boolean active) {
+        AppUser waiter = userRepository.findById(waiterId)
+                .orElseThrow(() -> new RuntimeException("Waiter not found with id: " + waiterId));
+        waiter.setActive(active);
+        userRepository.save(waiter);
+    }
 }
