@@ -33,6 +33,18 @@ public class MockCloudGatewayController {
 
         String cleanedCode = code.trim().toLowerCase();
 
+        // 1. If it's the target code and we have dynamic activation-data.json, load and return it
+        java.io.File file = new java.io.File("activation-data.json");
+        if (cleanedCode.equals("sd-28e792") && file.exists()) {
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                Map config = mapper.readValue(file, Map.class);
+                return ResponseEntity.ok(config);
+            } catch (Exception e) {
+                System.err.println("⚠️ [MockCloudGatewayController] Failed to read activation-data.json: " + e.getMessage());
+            }
+        }
+
         // Look up the code in the registry
         if (!CODE_TO_RESTAURANT.containsKey(cleanedCode)) {
             return ResponseEntity.badRequest().body(Map.of(
@@ -42,6 +54,7 @@ public class MockCloudGatewayController {
         }
 
         String restaurantId = CODE_TO_RESTAURANT.get(cleanedCode);
+
 
         // Route to the appropriate restaurant config builder
         Map<String, Object> response = buildRestaurantConfig(cleanedCode, restaurantId);

@@ -7,6 +7,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
+import jakarta.annotation.PostConstruct;
+
 
 import java.math.BigDecimal;
 import java.util.*;
@@ -47,6 +49,18 @@ public class ActivationService {
     @Autowired
     private MdnsService mdnsService;
 
+    @PostConstruct
+    public void initActiveTenant() {
+        try {
+            systemConfigRepository.findAll().stream().findFirst().ifPresent(config -> {
+                TenantContext.setActiveRestaurantId(config.getRestaurantId());
+                System.out.println("🚀 [ActivationService] Initialized active restaurant tenant ID: " + config.getRestaurantId());
+            });
+        } catch (Exception e) {
+            System.err.println("⚠️ [ActivationService] Failed to initialize active tenant: " + e.getMessage());
+        }
+    }
+
     /**
      * Checks if the system is already activated.
      */
@@ -54,6 +68,7 @@ public class ActivationService {
         return systemConfigRepository.findAll().stream()
                 .anyMatch(SystemConfig::isActivated);
     }
+
 
     /**
      * Retrieves the current system configuration.
