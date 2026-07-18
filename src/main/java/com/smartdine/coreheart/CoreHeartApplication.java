@@ -13,7 +13,21 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 public class CoreHeartApplication {
 
 	public static void main(String[] args) {
-		javafx.application.Application.launch(UiLauncher.class, args);
+		String activeProfiles = System.getProperty("spring.profiles.active");
+		if (activeProfiles == null) {
+			activeProfiles = System.getenv("SPRING_PROFILES_ACTIVE");
+		}
+		
+		boolean isProd = activeProfiles != null && activeProfiles.contains("prod");
+		boolean isHeadless = java.awt.GraphicsEnvironment.isHeadless();
+
+		if (isProd || isHeadless) {
+			System.out.println("🖥️ [CoreHeartApplication] Running in Headless/Cloud Mode. Bypassing JavaFX GUI...");
+			SpringApplication.run(CoreHeartApplication.class, args);
+		} else {
+			System.out.println("🖥️ [CoreHeartApplication] Running in Desktop Mode. Launching JavaFX GUI...");
+			javafx.application.Application.launch(UiLauncher.class, args);
+		}
 	}
 
 }
