@@ -1,22 +1,32 @@
 package com.smartdine.service;
 
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import com.smartdine.coreheart.AppUser;
-import com.smartdine.coreheart.JwtUtil;
+import com.smartdine.coreheart.*;
 import com.smartdine.dto.AuthResponse;
 import com.smartdine.dto.LoginRequest;
 import com.smartdine.dto.PinLoginRequest;
-import com.smartdine.repository.UserRepository;
+import com.smartdine.repository.*;
+import java.util.UUID;
+import java.util.Map;
+import java.util.Random;
 
 @Service
 public class AuthService {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private RestaurantRepository restaurantRepository;
+
+    @Autowired
+    private TableRepository tableRepository;
+
+    @Autowired
+    private CategoryRepository categoryRepository;
 
     @Autowired
     private PasswordEncoder passwordEncoder;
@@ -78,5 +88,63 @@ public class AuthService {
                 .orElseThrow(() -> new RuntimeException("Waiter not found with id: " + waiterId));
         waiter.setActive(active);
         userRepository.save(waiter);
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public java.util.Map<String, Object> registerNewTenant(String restaurantName, String username, String email, String password) {
+        // 1. Create and save a new Restaurant
+        String finalSyncCode = "";
+        java.util.Random random = new java.util.Random();
+        boolean unique = false;
+        while (!unique) {
+            int codeInt = 100000 + random.nextInt(900000);
+            String candidate = "SD-" + codeInt;
+            if (!restaurantRepository.findBySyncCodeAndIsDeletedFalse(candidate).isPresent()) {
+                finalSyncCode = candidate;
+                unique = true;
+            }
+        }
+
+        Restaurant restaurant = new Restaurant(restaurantName, finalSyncCode, true);
+        restaurant.setRestaurantId(UUID.randomUUID()); // unique identifier for the tenant
+        restaurant = restaurantRepository.save(restaurant);
+
+        UUID newRestId = restaurant.getRestaurantId();
+
+        // 2. Create and save the Admin AppUser
+        AppUser admin = new AppUser();
+        admin.setRestaurantId(newRestId);
+        admin.setUsername(username.trim());
+        admin.setPassword(passwordEncoder.encode(password));
+        admin.setRole(UserRole.ADMIN);
+        admin.setFullName("SaaS Restaurant Owner");
+        admin.setPin("1234"); // default helper pin
+        admin.setActive(true);
+        userRepository.save(admin);
+
+        // 3. Auto-Provision 4 Default Tables (T-01 to T-04)
+        for (int i = 1; i <= 4; i++) {
+            DiningTable table = new DiningTable();
+            table.setRestaurantId(newRestId);
+            table.setTableNumber(String.format("T-%02d", i));
+            table.setCapacity(4);
+            table.setAreaName("AC Area");
+            table.setStatus(TableStatus.AVAILABLE);
+            tableRepository.save(table);
+        }
+
+        // 4. Auto-Provision 3 Default Categories (Starters, Main Course, Desserts)
+        String[] defaults = {"Starters", "Main Course", "Desserts"};
+        for (String catName : defaults) {
+            Category cat = new Category();
+            cat.setRestaurantId(newRestId);
+            cat.setName(catName);
+            categoryRepository.save(cat);
+        }
+
+        return java.util.Map.of(
+            "syncCode", finalSyncCode,
+            "restaurantId", newRestId.toString()
+        );
     }
 }

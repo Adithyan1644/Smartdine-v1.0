@@ -25,6 +25,25 @@ public class AuthController {
         return ResponseEntity.ok(authService.authenticateUser(request));
     }
 
+    @PostMapping("/register")
+    public ResponseEntity<?> register(@RequestBody Map<String, String> request) {
+        try {
+            String restaurantName = request.get("restaurantName");
+            String username       = request.get("ownerName") != null ? request.get("ownerName") : request.get("username");
+            String email          = request.get("email");
+            String password       = request.get("password");
+            
+            if (restaurantName == null || username == null || email == null || password == null) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Missing required fields"));
+            }
+            
+            Map<String, Object> result = authService.registerNewTenant(restaurantName, username, email, password);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        }
+    }
+
     @PostMapping("/pin-login")
     public ResponseEntity<AuthResponse> pinLogin(@RequestBody PinLoginRequest request) {
         return ResponseEntity.ok(authService.authenticateWithPin(request));
