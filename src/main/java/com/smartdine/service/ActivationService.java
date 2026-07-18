@@ -271,14 +271,14 @@ public class ActivationService {
             throw new IllegalArgumentException("Activation code cannot be empty");
         }
 
-        // Fetch configuration from API server directly
-        String url = "http://localhost:5000/api/activation/activate?code=" + activationCode.trim();
+        // Fetch configuration from the local mock-cloud gateway (Spring Boot)
+        String url = "http://localhost:8080/api/mock-cloud/activate?code=" + activationCode.trim();
         RestTemplate restTemplate = new RestTemplate();
         Map<String, Object> config;
         try {
             config = restTemplate.getForObject(url, Map.class);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to fetch config from API server: " + e.getMessage(), e);
+            throw new RuntimeException("Failed to fetch config from cloud gateway: " + e.getMessage(), e);
         }
 
         if (config == null || config.containsKey("error")) {
