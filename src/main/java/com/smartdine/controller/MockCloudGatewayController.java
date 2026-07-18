@@ -33,15 +33,18 @@ public class MockCloudGatewayController {
 
         String cleanedCode = code.trim().toLowerCase();
 
-        // 1. If it's the target code and we have dynamic activation-data.json, load and return it
-        java.io.File file = new java.io.File("activation-data.json");
-        if (cleanedCode.equals("sd-28e792") && file.exists()) {
+        // 1. Load dynamic activation-[code].json file if present
+        java.io.File file = new java.io.File("activation-" + cleanedCode + ".json");
+        if (!file.exists() && cleanedCode.equals("sd-28e792")) {
+            file = new java.io.File("activation-data.json");
+        }
+        if (file.exists()) {
             try {
                 com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
                 Map config = mapper.readValue(file, Map.class);
                 return ResponseEntity.ok(config);
             } catch (Exception e) {
-                System.err.println("⚠️ [MockCloudGatewayController] Failed to read activation-data.json: " + e.getMessage());
+                System.err.println("⚠️ [MockCloudGatewayController] Failed to read " + file.getName() + ": " + e.getMessage());
             }
         }
 
