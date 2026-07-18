@@ -66,7 +66,11 @@ public class ActivationApiController {
     @PostMapping("/save-config")
     public ResponseEntity<?> saveConfig(@RequestBody Map<String, Object> request) {
         try {
-            java.io.File file = new java.io.File("activation-data.json");
+            String syncCode = request.get("syncCode") != null ? request.get("syncCode").toString() : "SD-28E792";
+            String restId = request.get("restaurantId") != null ? request.get("restaurantId").toString() : "28e79200-0000-4000-a000-000000000001";
+            
+            String fileName = "activation-" + syncCode.trim().toLowerCase() + ".json";
+            java.io.File file = new java.io.File(fileName);
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             
             java.util.List<Map<String, Object>> incomingTables = (java.util.List<Map<String, Object>>) request.get("tables");
@@ -148,7 +152,7 @@ public class ActivationApiController {
             );
             
             Map<String, Object> gatewayPayload = new java.util.HashMap<>();
-            gatewayPayload.put("restaurantId", "28e79200-0000-4000-a000-000000000001");
+            gatewayPayload.put("restaurantId", restId);
             gatewayPayload.put("restaurantName", request.get("restaurantName") != null ? request.get("restaurantName").toString() : "SmartDine Custom POS");
             gatewayPayload.put("cgstRate", new java.math.BigDecimal("2.50"));
             gatewayPayload.put("sgstRate", new java.math.BigDecimal("2.50"));
@@ -161,7 +165,7 @@ public class ActivationApiController {
             
             mapper.writeValue(file, gatewayPayload);
             
-            return ResponseEntity.ok(Map.of("success", true, "code", "SD-28E792"));
+            return ResponseEntity.ok(Map.of("success", true, "code", syncCode));
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.badRequest().body(Map.of("success", false, "error", e.getMessage()));
@@ -196,33 +200,84 @@ public class ActivationApiController {
             restaurantId = java.util.UUID.fromString("28e79200-0000-4000-a000-000000000001");
         }
 
-        // 4. Query all orders of today
-        java.time.LocalDateTime startOfToday = java.time.LocalDateTime.now().withHour(0).withMinute(0).withSecond(0).withNano(0);
-        java.util.List<com.smartdine.coreheart.Order> orders = orderRepository.findByRestaurantIdAndStartedAtAfter(restaurantId, startOfToday);
+        // 4. Query all orders of last 30 days
+        java.time.LocalDateTime startOfThirtyDaysAgo = java.time.LocalDateTime.now().minusDays(30).withHour(0).withMinute(0).withSecond(0).withNano(0);
+        java.util.List<com.smartdine.coreheart.Order> allOrders = orderRepository.findByRestaurantIdAndStartedAtAfter(restaurantId, startOfThirtyDaysAgo);
 
-        // 5. Calculations
-        java.math.BigDecimal salesVal = java.math.BigDecimal.ZERO;
-        int ordersVal = orders.size();
-        int dineInCount = 0;
-        int takeawayCount = 0;
-        int deliveryCount = 0;
+        // 5. Calculations for different time boundaries
+        java.time.LocalDateTime todayStart = java.time.LocalDateTime.now().withHour(0).withMinute(0).withSecond(0).withNano(0);
+        java.time.LocalDateTime yesterdayStart = todayStart.minusDays(1);
+        java.time.LocalDateTime weekStart = todayStart.minusDays(7);
+        java.time.LocalDateTime monthStart = todayStart.withDayOfMonth(1);
 
-        java.util.List<java.util.UUID> orderIds = new java.util.ArrayList<>();
+        java.math.BigDecimal todaySales = java.math.BigDecimal.ZERO;
+        java.math.BigDecimal yesterdaySales = java.math.BigDecimal.ZERO;
+        java.math.BigDecimal weeklySales = java.math.BigDecimal.ZERO;
+        java.math.BigDecimal monthlySales = java.math.BigDecimal.ZERO;
 
-        for (com.smartdine.coreheart.Order o : orders) {
-            orderIds.add(o.getId());
-            if (o.getStatus() == com.smartdine.coreheart.OrderStatus.PAID) {
-                salesVal = salesVal.add(o.getGrandTotal());
+        int todayOrdersCount = 0;
+        int todayDineInCount = 0;
+        int todayTakeawayCount = 0;
+        int todayDeliveryCount = 0;
+
+        java.math.BigDecimal todayDineInSales = java.math.BigDecimal.ZERO;
+        java.math.BigDecimal todayTakeawaySales = java.math.BigDecimal.ZERO;
+        java.math.BigDecimal todayDeliverySales = java.math.BigDecimal.ZERO;
+
+        java.math.BigDecimal todayUpiSales = java.math.BigDecimal.ZERO;
+        java.math.BigDecimal todayCashSales = java.math.BigDecimal.ZERO;
+        java.math.BigDecimal todayCardSales = java.math.BigDecimal.ZERO;
+
+        java.util.List<java.util.UUID> todayOrderIds = new java.util.ArrayList<>();
+
+        for (com.smartdine.coreheart.Order o : allOrders) {
+            java.time.LocalDateTime started = o.getStartedAt();
+            java.math.BigDecimal total = o.getGrandTotal();
+            boolean isPaid = o.getStatus() == com.smartdine.coreheart.OrderStatus.PAID;
+
+            if (started.isAfter(todayStart)) {
+                todayOrderIds.add(o.getId());
+                todayOrdersCount++;
+                if (isPaid) {
+                    todaySales = todaySales.add(total);
+                    
+                    // Channel sales
+                    if (o.getType() == com.smartdine.coreheart.OrderType.DINE_IN) {
+                        todayDineInSales = todayDineInSales.add(total);
+                        todayDineInCount++;
+                    } else if (o.getType() == com.smartdine.coreheart.OrderType.PICK_UP) {
+                        todayTakeawaySales = todayTakeawaySales.add(total);
+                        todayTakeawayCount++;
+                    } else {
+                        todayDeliverySales = todayDeliverySales.add(total);
+                        todayDeliveryCount++;
+                    }
+
+                    // Payment sales
+                    String payMode = o.getPaymentMode();
+                    if (payMode != null) {
+                        if (payMode.equalsIgnoreCase("UPI")) todayUpiSales = todayUpiSales.add(total);
+                        else if (payMode.equalsIgnoreCase("CASH")) todayCashSales = todayCashSales.add(total);
+                        else if (payMode.equalsIgnoreCase("CARD")) todayCardSales = todayCardSales.add(total);
+                    }
+                }
+            } else if (started.isAfter(yesterdayStart)) {
+                if (isPaid) yesterdaySales = yesterdaySales.add(total);
             }
-            if (o.getType() == com.smartdine.coreheart.OrderType.DINE_IN) dineInCount++;
-            else if (o.getType() == com.smartdine.coreheart.OrderType.PICK_UP) takeawayCount++;
-            else deliveryCount++;
+
+            if (started.isAfter(weekStart)) {
+                if (isPaid) weeklySales = weeklySales.add(total);
+            }
+
+            if (started.isAfter(monthStart)) {
+                if (isPaid) monthlySales = monthlySales.add(total);
+            }
         }
 
-        // Top Dishes computation
+        // Top Dishes computation for today
         java.util.Map<String, Integer> itemQuantities = new java.util.HashMap<>();
-        if (!orderIds.isEmpty()) {
-            java.util.List<com.smartdine.coreheart.KOT> kots = kotRepository.findByOrderIdIn(orderIds);
+        if (!todayOrderIds.isEmpty()) {
+            java.util.List<com.smartdine.coreheart.KOT> kots = kotRepository.findByOrderIdIn(todayOrderIds);
             for (com.smartdine.coreheart.KOT k : kots) {
                 for (com.smartdine.coreheart.KOTItem item : k.getItems()) {
                     String name = item.getItemName();
@@ -251,27 +306,118 @@ public class ActivationApiController {
             ));
         }
 
-        // Sort top dishes by revenue desc
         topDishes.sort((a, b) -> Double.compare((Double) b.get("revenue"), (Double) a.get("revenue")));
         if (topDishes.size() > 5) {
             topDishes = topDishes.subList(0, 5);
         }
 
-        // Business mix percentages
+        // Business mix percentages for today's orders
         double dineInPct = 0;
         double takeawayPct = 0;
         double deliveryPct = 0;
-        if (ordersVal > 0) {
-            dineInPct = Math.round((dineInCount * 100.0) / ordersVal);
-            takeawayPct = Math.round((takeawayCount * 100.0) / ordersVal);
-            deliveryPct = Math.round((deliveryCount * 100.0) / ordersVal);
+        if (todayOrdersCount > 0) {
+            dineInPct = Math.round((todayDineInCount * 100.0) / todayOrdersCount);
+            takeawayPct = Math.round((todayTakeawayCount * 100.0) / todayOrdersCount);
+            deliveryPct = Math.round((todayDeliveryCount * 100.0) / todayOrdersCount);
+        }
+
+        // Revenue distribution lists for Sales screen
+        double totalSalesD = todaySales.doubleValue();
+        java.util.List<Map<String, Object>> distribution = java.util.List.of(
+            Map.of("name", "Dine-In", "value", todayDineInSales.doubleValue(), "pct", totalSalesD > 0 ? Math.round((todayDineInSales.doubleValue() * 100) / totalSalesD) : 0, "color", "#0B6B50"),
+            Map.of("name", "Takeaway", "value", todayTakeawaySales.doubleValue(), "pct", totalSalesD > 0 ? Math.round((todayTakeawaySales.doubleValue() * 100) / totalSalesD) : 0, "color", "#F59E0B"),
+            Map.of("name", "Online", "value", todayDeliverySales.doubleValue(), "pct", totalSalesD > 0 ? Math.round((todayDeliverySales.doubleValue() * 100) / totalSalesD) : 0, "color", "#3B82F6")
+        );
+
+        // Payment methods lists for Sales screen
+        java.util.List<Map<String, Object>> paymentMethods = java.util.List.of(
+            Map.of("method", "UPI", "amount", todayUpiSales.doubleValue(), "pct", totalSalesD > 0 ? Math.round((todayUpiSales.doubleValue() * 100) / totalSalesD) : 0, "color", "#0B6B50"),
+            Map.of("method", "Cash", "amount", todayCashSales.doubleValue(), "pct", totalSalesD > 0 ? Math.round((todayCashSales.doubleValue() * 100) / totalSalesD) : 0, "color", "#F59E0B"),
+            Map.of("method", "Card", "amount", todayCardSales.doubleValue(), "pct", totalSalesD > 0 ? Math.round((todayCardSales.doubleValue() * 100) / totalSalesD) : 0, "color", "#3B82F6")
+        );
+
+        // Peak hours grouping for today's orders
+        int slot8to10 = 0, slot12to2 = 0, slot4to6 = 0, slot7to9 = 0, slot9to11 = 0;
+        for (com.smartdine.coreheart.Order o : allOrders) {
+            if (o.getStartedAt().isAfter(todayStart)) {
+                int hour = o.getStartedAt().getHour();
+                if (hour >= 8 && hour < 10) slot8to10++;
+                else if (hour >= 12 && hour < 14) slot12to2++;
+                else if (hour >= 16 && hour < 18) slot4to6++;
+                else if (hour >= 19 && hour < 21) slot7to9++;
+                else if (hour >= 21 && hour < 23) slot9to11++;
+            }
+        }
+        int maxSlots = Math.max(1, Math.max(slot8to10, Math.max(slot12to2, Math.max(slot4to6, Math.max(slot7to9, slot9to11)))));
+        java.util.List<Map<String, Object>> peakHours = java.util.List.of(
+            Map.of("slot", "8 AM – 10 AM", "label", "Breakfast Rush", "orders", slot8to10, "pct", Math.round((slot8to10 * 100.0) / maxSlots)),
+            Map.of("slot", "12 PM – 2 PM", "label", "Lunch Rush", "orders", slot12to2, "pct", Math.round((slot12to2 * 100.0) / maxSlots)),
+            Map.of("slot", "4 PM – 6 PM", "label", "Evening Snacks", "orders", slot4to6, "pct", Math.round((slot4to6 * 100.0) / maxSlots)),
+            Map.of("slot", "7 PM – 9 PM", "label", "Dinner Rush", "orders", slot7to9, "pct", Math.round((slot7to9 * 100.0) / maxSlots)),
+            Map.of("slot", "9 PM – 11 PM", "label", "Late Dinner", "orders", slot9to11, "pct", Math.round((slot9to11 * 100.0) / maxSlots))
+        );
+
+        // Daily trend grouping (Mon-Sun of this week)
+        java.util.List<Map<String, Object>> dailyTrend = new java.util.ArrayList<>();
+        String[] days = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
+        java.time.LocalDate todayLocalDate = java.time.LocalDate.now();
+        int currentDayOfWeek = todayLocalDate.getDayOfWeek().getValue(); // 1 = Mon, 7 = Sun
+        
+        for (int i = 1; i <= 7; i++) {
+            int offset = i - currentDayOfWeek;
+            java.time.LocalDate dayDate = todayLocalDate.plusDays(offset);
+            java.time.LocalDateTime dayS = dayDate.atStartOfDay();
+            java.time.LocalDateTime dayE = dayS.plusDays(1);
+            
+            java.math.BigDecimal daySales = java.math.BigDecimal.ZERO;
+            for (com.smartdine.coreheart.Order o : allOrders) {
+                if (o.getStatus() == com.smartdine.coreheart.OrderStatus.PAID &&
+                    o.getStartedAt().isAfter(dayS) && o.getStartedAt().isBefore(dayE)) {
+                    daySales = daySales.add(o.getGrandTotal());
+                }
+            }
+            dailyTrend.add(Map.of("name", days[i-1], "sales", daySales.doubleValue()));
+        }
+
+        // Weekly trend grouping (Last 4 weeks)
+        java.util.List<Map<String, Object>> weeklyTrend = new java.util.ArrayList<>();
+        for (int i = 3; i >= 0; i--) {
+            java.time.LocalDateTime wS = todayStart.minusWeeks(i + 1);
+            java.time.LocalDateTime wE = todayStart.minusWeeks(i);
+            java.math.BigDecimal wSales = java.math.BigDecimal.ZERO;
+            for (com.smartdine.coreheart.Order o : allOrders) {
+                if (o.getStatus() == com.smartdine.coreheart.OrderStatus.PAID &&
+                    o.getStartedAt().isAfter(wS) && o.getStartedAt().isBefore(wE)) {
+                    wSales = wSales.add(o.getGrandTotal());
+                }
+            }
+            weeklyTrend.add(Map.of("name", "Wk " + (4-i), "sales", wSales.doubleValue()));
+        }
+
+        // Monthly trend grouping (Last 6 months)
+        java.util.List<Map<String, Object>> monthlyTrend = new java.util.ArrayList<>();
+        String[] months = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+        java.time.LocalDate currentMonthDate = todayLocalDate.minusMonths(5);
+        for (int i = 0; i < 6; i++) {
+            java.time.LocalDate mDate = currentMonthDate.plusMonths(i);
+            java.time.LocalDateTime mS = mDate.withDayOfMonth(1).atStartOfDay();
+            java.time.LocalDateTime mE = mS.plusMonths(1);
+            
+            java.math.BigDecimal mSales = java.math.BigDecimal.ZERO;
+            for (com.smartdine.coreheart.Order o : allOrders) {
+                if (o.getStatus() == com.smartdine.coreheart.OrderStatus.PAID &&
+                    o.getStartedAt().isAfter(mS) && o.getStartedAt().isBefore(mE)) {
+                    mSales = mSales.add(o.getGrandTotal());
+                }
+            }
+            monthlyTrend.add(Map.of("name", months[mDate.getMonthValue() - 1], "sales", mSales.doubleValue()));
         }
 
         // Pulse insights
         java.util.List<String> pulse = new java.util.ArrayList<>();
-        if (ordersVal > 0) {
-            pulse.add("Dine-in is your leading channel today with " + dineInCount + " orders.");
-            pulse.add("Average order value stands at ₹" + String.format("%.2f", salesVal.doubleValue() / ordersVal) + ".");
+        if (todayOrdersCount > 0) {
+            pulse.add("Dine-in is your leading channel today with " + todayDineInCount + " orders.");
+            pulse.add("Average order value stands at ₹" + String.format("%.2f", todaySales.doubleValue() / todayOrdersCount) + ".");
             pulse.add("Live sync is active. System is running healthy.");
         } else {
             pulse.add("Welcome to Surabhi SmartDine! Connect your POS client to seed menus.");
@@ -279,29 +425,38 @@ public class ActivationApiController {
             pulse.add("No sales activity recorded yet today.");
         }
 
-        // Daily chart data reflecting today's sales
-        java.util.List<Map<String, Object>> dailyChart = java.util.List.of(
-            Map.of("name", "Mon", "sales", 0.0, "expenses", 0.0, "profit", 0.0),
-            Map.of("name", "Tue", "sales", 0.0, "expenses", 0.0, "profit", 0.0),
-            Map.of("name", "Wed", "sales", 0.0, "expenses", 0.0, "profit", 0.0),
-            Map.of("name", "Thu", "sales", 0.0, "expenses", 0.0, "profit", 0.0),
-            Map.of("name", "Fri", "sales", 0.0, "expenses", 0.0, "profit", 0.0),
-            Map.of("name", "Sat", "sales", 0.0, "expenses", 0.0, "profit", 0.0),
-            Map.of("name", "Sun", "sales", salesVal.doubleValue(), "expenses", 0.0, "profit", salesVal.doubleValue())
+        // Comparison cards
+        java.math.BigDecimal compDiff = todaySales.subtract(yesterdaySales);
+        double compPct = yesterdaySales.doubleValue() > 0 ? Math.round((compDiff.doubleValue() * 100.0) / yesterdaySales.doubleValue()) : 0.0;
+        java.util.List<Map<String, Object>> comparison = java.util.List.of(
+            Map.of("label", "Today vs Yesterday", "diff", compDiff.doubleValue(), "pct", compPct, "positive", compDiff.doubleValue() >= 0),
+            Map.of("label", "This Week vs Last Week", "diff", weeklySales.doubleValue(), "pct", 0.0, "positive", true),
+            Map.of("label", "This Month vs Last Month", "diff", monthlySales.doubleValue(), "pct", 0.0, "positive", true)
         );
+
+        // Insights for Sales screen
+        java.util.List<String> salesInsights = new java.util.ArrayList<>();
+        if (todayOrdersCount > 0) {
+            salesInsights.add("Sales today reached ₹" + todaySales.doubleValue() + ", driven by " + todayOrdersCount + " covers.");
+            salesInsights.add("UPI was used in " + todayUpiSales.doubleValue() + " worth of transactions.");
+            salesInsights.add("Dine-In contributed ₹" + todayDineInSales.doubleValue() + " to today's operations.");
+        } else {
+            salesInsights.add("No sales transactions recorded yet today.");
+            salesInsights.add("Configure UPI, Cash, and Card modes to monitor transaction shares.");
+        }
 
         Map<String, Object> overviewMap = new java.util.HashMap<>();
         overviewMap.put("kpis", Map.of(
-            "sales", Map.of("value", salesVal.doubleValue()),
+            "sales", Map.of("value", todaySales.doubleValue()),
             "expenses", Map.of("value", 0.0),
-            "profit", Map.of("value", salesVal.doubleValue()),
-            "orders", Map.of("value", ordersVal)
+            "profit", Map.of("value", todaySales.doubleValue()),
+            "orders", Map.of("value", todayOrdersCount)
         ));
         overviewMap.put("pulse", pulse);
         overviewMap.put("topDishes", topDishes);
         overviewMap.put("kitchen", Map.of(
-            "status", ordersVal > 0 ? "Excellent" : "Idle",
-            "prepTime", ordersVal > 0 ? "12m" : "—",
+            "status", todayOrdersCount > 0 ? "Excellent" : "Idle",
+            "prepTime", todayOrdersCount > 0 ? "12m" : "—",
             "delayedOrders", 0,
             "fastestItem", topDishes.isEmpty() ? "—" : topDishes.get(0).get("name"),
             "slowestItem", "—",
@@ -317,9 +472,9 @@ public class ActivationApiController {
             Map.of("priority", "Medium", "title", "Live Connection", "desc", "POS terminal is active and broadcasting.")
         ));
         overviewMap.put("charts", Map.of(
-            "Daily", dailyChart,
-            "Weekly", java.util.List.of(Map.of("name", "Wk 4", "sales", salesVal.doubleValue(), "expenses", 0.0, "profit", salesVal.doubleValue())),
-            "Monthly", java.util.List.of(Map.of("name", "Jun", "sales", salesVal.doubleValue(), "expenses", 0.0, "profit", salesVal.doubleValue()))
+            "Daily", dailyTrend,
+            "Weekly", weeklyTrend,
+            "Monthly", monthlyTrend
         ));
 
         // Top level response structure for all screens
@@ -327,23 +482,50 @@ public class ActivationApiController {
         response.put("overview", overviewMap);
         response.put("sales", Map.of(
             "kpis", Map.of(
-                "grossSales", Map.of("value", salesVal.doubleValue()),
-                "netSales", Map.of("value", salesVal.doubleValue()),
-                "avgOrder", Map.of("value", ordersVal > 0 ? salesVal.doubleValue() / ordersVal : 0.0),
-                "transactions", Map.of("value", ordersVal)
+                "today", Map.of("value", todaySales.doubleValue(), "change", compPct, "positive", compDiff.doubleValue() >= 0),
+                "yesterday", Map.of("value", yesterdaySales.doubleValue(), "change", 0, "positive", true),
+                "weekly", Map.of("value", weeklySales.doubleValue(), "change", 0, "positive", true),
+                "monthly", Map.of("value", monthlySales.doubleValue(), "change", 0, "positive", true)
             ),
-            "comparison", Map.of(
-                "dineIn", dineInPct,
-                "takeaway", takeawayPct,
-                "delivery", deliveryPct
-            )
+            "comparison", comparison,
+            "distribution", distribution,
+            "trends", Map.of(
+                "Daily", dailyTrend,
+                "Weekly", weeklyTrend,
+                "Monthly", monthlyTrend
+            ),
+            "peakHours", peakHours,
+            "paymentMethods", paymentMethods,
+            "insights", salesInsights
         ));
         response.put("kitchen", Map.of(
             "orderKpis", Map.of(
-                "totalOrders", Map.of("value", ordersVal),
-                "completed", Map.of("value", ordersVal),
-                "averageTime", Map.of("value", 12),
-                "delayed", Map.of("value", 0)
+                "total", todayOrdersCount,
+                "active", 0,
+                "completed", todayOrdersCount,
+                "dineIn", todayDineInCount,
+                "takeaway", todayTakeawayCount,
+                "online", todayDeliveryCount
+            ),
+            "orderDistribution", java.util.List.of(
+                Map.of("name", "Dine-In", "value", todayDineInCount, "color", "#0B6B50"),
+                Map.of("name", "Takeaway", "value", todayTakeawayCount, "color", "#F59E0B"),
+                Map.of("name", "Online", "value", todayDeliveryCount, "color", "#3B82F6")
+            ),
+            "kitchenKpis", java.util.List.of(
+                Map.of("label", "Avg Prep Time", "value", todayOrdersCount > 0 ? "12 mins" : "—", "change", 0, "positive", true),
+                Map.of("label", "Kitchen Load", "value", todayOrdersCount > 0 ? "Normal" : "Light", "change", 0, "positive", true),
+                Map.of("label", "Service Quality", "value", "100%", "change", 0, "positive", true)
+            ),
+            "kitchenStatus", Map.of("status", todayOrdersCount > 0 ? "Excellent" : "Smooth"),
+            "liveSummary", java.util.List.of(
+                Map.of("label", "Completed Tickets", "value", todayOrdersCount, "color", "#0B6B50"),
+                Map.of("label", "Active Tickets", "value", 0, "color", "#3B82F6"),
+                Map.of("label", "Delayed Tickets", "value", 0, "color", "#DC2626")
+            ),
+            "delayedItems", java.util.Collections.emptyList(),
+            "operationalInsights", java.util.List.of(
+                Map.of("text", "Kitchen operations are currently running normal.")
             )
         ));
 
