@@ -44,6 +44,9 @@ public class ActivationService {
     private CustomerRepository customerRepository;
 
     @Autowired
+    private com.smartdine.repository.RestaurantRepository restaurantRepository;
+
+    @Autowired
     private PasswordEncoder passwordEncoder;
 
     @Autowired
@@ -116,7 +119,12 @@ public class ActivationService {
         TenantContext.setRestaurantId(restaurantId);
 
         try {
-            // 3. Purge existing local tables in order, using standard cascades
+            // 3. Preserve waiter accounts added via the admin panel (role = WAITER)
+            // so that manually-added staff survive re-activation.
+            List<AppUser> existingWaiters = userRepository
+                .findByRestaurantIdAndRoleAndIsActiveTrue(restaurantId, UserRole.WAITER);
+
+            // Purge operational data only — NOT waiter accounts
             kotRepository.deleteAll();
             orderRepository.deleteAll();
             customerRepository.deleteAll();
@@ -124,10 +132,13 @@ public class ActivationService {
             modifierGroupRepository.deleteAll();
             categoryRepository.deleteAll();
             tableRepository.deleteAll();
-            userRepository.deleteAll();
+            // Delete only non-waiter users (kitchen, admin seed accounts)
+            userRepository.findAll().stream()
+                .filter(u -> u.getRole() != UserRole.WAITER)
+                .forEach(userRepository::delete);
             systemConfigRepository.deleteAll();
 
-            // Flush all deletions immediately to database before performing saves
+            // Flush all deletions
             kotRepository.flush();
             orderRepository.flush();
             customerRepository.flush();
@@ -149,6 +160,25 @@ public class ActivationService {
             sysConfig.setServiceChargeRate(serviceChargeRate);
             systemConfigRepository.save(sysConfig);
             TenantContext.setActiveRestaurantId(restaurantId);
+
+            // 4b. Upsert the Restaurant record so sync-code lookups work correctly.
+            // Without this row, ProvisioningController cannot resolve the restaurant
+            // by syncCode and falls back to hardcoded dummy waiters.
+            com.smartdine.coreheart.Restaurant restaurantRecord =
+                restaurantRepository.findBySyncCodeAndIsDeletedFalse(activationCode.trim())
+                    .orElse(new com.smartdine.coreheart.Restaurant());
+            restaurantRecord.setName(restaurantName);
+            restaurantRecord.setSyncCode(activationCode.trim());
+            restaurantRecord.setActive(true);
+            // Restaurant entity uses restaurant_id to store its own UUID (it's the root).
+            // Must satisfy the BaseEntity NOT NULL constraint.
+            if (restaurantRecord.getRestaurantId() == null) {
+                restaurantRecord.setRestaurantId(restaurantId);
+            }
+            restaurantRepository.save(restaurantRecord);
+            System.out.println("✅ [ActivationService] Restaurant row upserted with syncCode=" + activationCode.trim());
+
+
 
             // 5. Seed Tables
             List<Map<String, Object>> tableList = (List<Map<String, Object>>) config.get("tables");
@@ -230,13 +260,22 @@ public class ActivationService {
                 }
             }
 
-            // 9. Seed Waiter and Kitchen staff accounts (Phase 3 matching credentials)
+            // 9. Seed Waiter accounts from config (only if not already in DB from admin panel)
             List<Map<String, Object>> waitersList = (List<Map<String, Object>>) config.get("waiters");
+            // Collect pins already in DB so we don't create duplicates
+            Set<String> existingPins = existingWaiters.stream()
+                .map(AppUser::getPin)
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+
             if (waitersList != null && !waitersList.isEmpty()) {
                 for (Map<String, Object> w : waitersList) {
                     String pin = (String) w.get("pin");
                     if (pin == null || pin.trim().isEmpty()) continue;
-                    
+                    if (existingPins.contains(pin.trim())) {
+                        // Waiter with this PIN was already added via admin panel — skip seeding
+                        continue;
+                    }
                     AppUser customWaiter = new AppUser();
                     customWaiter.setRestaurantId(restaurantId);
                     customWaiter.setUsername("waiter_" + pin.trim());
@@ -248,18 +287,8 @@ public class ActivationService {
                     customWaiter.setActive(status == null || status.equalsIgnoreCase("Active"));
                     userRepository.save(customWaiter);
                 }
-            } else {
-                // Fallback default waiter
-                AppUser waiter = new AppUser();
-                waiter.setRestaurantId(restaurantId);
-                waiter.setUsername("waiter");
-                waiter.setPassword(passwordEncoder.encode("waiter123"));
-                waiter.setRole(UserRole.WAITER);
-                waiter.setFullName("Arjun Mehta");
-                waiter.setPin("4022"); // Waiter code W-4022
-                waiter.setActive(true);
-                userRepository.save(waiter);
             }
+            // NOTE: No fallback dummy waiter seeded — admin adds real waiters via the web panel.
 
             // Kitchen staff
             AppUser kitchen = new AppUser();

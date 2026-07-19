@@ -32,11 +32,21 @@ public class MockCloudGatewayController {
         }
 
         String cleanedCode = code.trim().toLowerCase();
-
-        // 1. Load dynamic activation-[code].json file if present
         java.io.File file = new java.io.File("activation-" + cleanedCode + ".json");
+        if (!file.exists()) {
+            file = new java.io.File("core-heart/activation-" + cleanedCode + ".json");
+        }
+        if (!file.exists()) {
+            file = new java.io.File("core-heart/core-heart/activation-" + cleanedCode + ".json");
+        }
         if (!file.exists() && cleanedCode.equals("sd-28e792")) {
             file = new java.io.File("activation-data.json");
+            if (!file.exists()) {
+                file = new java.io.File("core-heart/activation-data.json");
+            }
+            if (!file.exists()) {
+                file = new java.io.File("core-heart/core-heart/activation-data.json");
+            }
         }
         if (file.exists()) {
             try {
