@@ -25,6 +25,7 @@ import java.util.*;
  */
 @RestController
 @RequestMapping("/api/public/provision")
+@CrossOrigin(origins = "*")
 public class ProvisioningController {
 
     @Autowired
@@ -141,5 +142,33 @@ public class ProvisioningController {
             result.add(entry);
         }
         return result;
+    }
+
+    // 1. Endpoint called by local Billing PC to report its IP on startup
+    @PostMapping("/report-ip")
+    public ResponseEntity<String> reportLocalIp(
+            @RequestHeader("X-Restaurant-ID") UUID restaurantId,
+            @RequestParam("ip") String ipAddress) {
+        
+        Restaurant restaurant = restaurantRepository.findByRestaurantId(restaurantId)
+                .orElseThrow(() -> new RuntimeException("Restaurant not found"));
+        
+        restaurant.setActiveLocalIp(ipAddress);
+        restaurantRepository.save(restaurant);
+        
+        System.out.println("☁️ GCP Cloud: Registered IP [" + ipAddress + "] for Restaurant: " + restaurant.getName());
+        return ResponseEntity.ok("IP Registered");
+    }
+
+    // 2. Endpoint called by Waiter & KDS apps to fetch their local PC's live IP on boot
+    @GetMapping("/active-ip")
+    public ResponseEntity<Map<String, String>> getActiveIp(@RequestParam("syncCode") String syncCode) {
+        Restaurant restaurant = restaurantRepository.findBySyncCodeAndIsDeletedFalse(syncCode.trim())
+                .orElseThrow(() -> new RuntimeException("Invalid Sync Code: " + syncCode));
+
+        return ResponseEntity.ok(Map.of(
+            "restaurantId", restaurant.getRestaurantId().toString(),
+            "localIp", restaurant.getActiveLocalIp() != null ? restaurant.getActiveLocalIp() : "127.0.0.1"
+        ));
     }
 }

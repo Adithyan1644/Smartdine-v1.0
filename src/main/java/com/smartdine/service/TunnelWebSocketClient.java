@@ -31,7 +31,7 @@ public class TunnelWebSocketClient extends TextWebSocketHandler implements Comma
     private static final String DEFAULT_RESTAURANT_ID = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
     
     // Configurable endpoint (defaults to localhost:8080 representing Cloud Gateway)
-    private static final String GATEWAY_WS_URL = "ws://localhost:8080/ws/tunnel";
+    private static final String GATEWAY_WS_URL = "wss://smartdine-v1-0-git-635032287458.europe-west1.run.app/ws/tunnel";
 
     @Override
     public void run(String... args) throws Exception {

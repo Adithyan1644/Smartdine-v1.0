@@ -52,6 +52,9 @@ public class ActivationService {
     @Autowired
     private MdnsService mdnsService;
 
+    @Autowired
+    private CloudIpReporter cloudIpReporter;
+
     @PostConstruct
     public void initActiveTenant() {
         try {
@@ -178,7 +181,10 @@ public class ActivationService {
             restaurantRepository.save(restaurantRecord);
             System.out.println("✅ [ActivationService] Restaurant row upserted with syncCode=" + activationCode.trim());
 
-
+            // Trigger GCP IP Reporting immediately on activation
+            if (cloudIpReporter != null) {
+                Thread.ofVirtual().start(cloudIpReporter::reportIpToCloud);
+            }
 
             // 5. Seed Tables
             List<Map<String, Object>> tableList = (List<Map<String, Object>>) config.get("tables");

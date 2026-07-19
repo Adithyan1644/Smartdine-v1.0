@@ -9,4 +9,5 @@ import java.util.UUID;
 @Repository
 public interface RestaurantRepository extends JpaRepository<Restaurant, UUID> {
     Optional<Restaurant> findBySyncCodeAndIsDeletedFalse(String syncCode);
+    Optional<Restaurant> findByRestaurantId(UUID restaurantId);
 }
