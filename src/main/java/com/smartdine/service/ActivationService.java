@@ -52,7 +52,7 @@ public class ActivationService {
     @Autowired
     private MdnsService mdnsService;
 
-    @Autowired
+    @Autowired(required = false)
     private CloudIpReporter cloudIpReporter;
 
     @PostConstruct
