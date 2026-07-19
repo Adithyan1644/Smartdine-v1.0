@@ -26,7 +26,15 @@ public class CoreHeartApplication {
 			SpringApplication.run(CoreHeartApplication.class, args);
 		} else {
 			System.out.println("🖥️ [CoreHeartApplication] Running in Desktop Mode. Launching JavaFX GUI...");
-			javafx.application.Application.launch(UiLauncher.class, args);
+			try {
+				Class<?> launcherClass = Class.forName("com.smartdine.coreheart.UiLauncher");
+				Class<?> appClass = Class.forName("javafx.application.Application");
+				java.lang.reflect.Method launchMethod = appClass.getMethod("launch", Class.class, String[].class);
+				launchMethod.invoke(null, launcherClass, args);
+			} catch (Exception e) {
+				System.err.println("❌ Failed to launch desktop GUI: " + e.getMessage());
+				e.printStackTrace();
+			}
 		}
 	}
 
