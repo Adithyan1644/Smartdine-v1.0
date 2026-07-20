@@ -90,8 +90,26 @@
                      <children>
                         <VBox spacing="6.0">
                            <children>
-                              <Label text="Step 2: Local Account Setup" styleClass="step-title" />
-                              <Label text="Create the local administrator credentials to secure your Biller Station." wrapText="true" styleClass="step-subtitle" />
+                              <Label text="Step 2: Auto-Detected Restaurant Info" styleClass="step-title" />
+                              <Label text="Restaurant data retrieved directly from your Admin account." wrapText="true" styleClass="step-subtitle" />
+                           </children>
+                        </VBox>
+
+                        <!-- DETECTED RESTAURANT INFO CARD -->
+                        <VBox spacing="8.0" style="-fx-background-color: #F8FAFC; -fx-padding: 12px 16px; -fx-background-radius: 8px; -fx-border-color: #E2E8F0; -fx-border-radius: 8px;">
+                           <children>
+                              <HBox alignment="CENTER_LEFT" spacing="8.0">
+                                 <children>
+                                    <Label text="🏪 Restaurant Name:" style="-fx-font-weight: bold; -fx-text-fill: #1E293B; -fx-font-size: 13px;" />
+                                    <Label fx:id="detectedRestaurantLabel" text="AVKK" style="-fx-font-weight: bold; -fx-text-fill: #10B981; -fx-font-size: 14px;" />
+                                 </children>
+                              </HBox>
+                              <HBox alignment="CENTER_LEFT" spacing="8.0">
+                                 <children>
+                                    <Label text="👤 Account / Owner:" style="-fx-font-weight: bold; -fx-text-fill: #1E293B; -fx-font-size: 13px;" />
+                                    <Label fx:id="detectedOwnerLabel" text="ADITHYAN (adithyanvijayan21644@gmail.com)" style="-fx-text-fill: #64748B; -fx-font-size: 13px;" />
+                                 </children>
+                              </HBox>
                            </children>
                         </VBox>
 
@@ -132,7 +150,7 @@
 
                         <Label fx:id="errorLabel2" text="" wrapText="true" styleClass="error-message" visible="false" managed="false" />
 
-                        <Button fx:id="completeBtn" text="Initialize POS &amp; Start Broadcasting" onAction="#handleCompleteSetup" maxWidth="Infinity" styleClass="primary-btn" />
+                        <Button fx:id="completeBtn" text="Save Biller Credentials &amp; Proceed to Login" onAction="#handleCompleteSetup" maxWidth="Infinity" styleClass="primary-btn" />
                      </children>
                   </VBox>
                </children>

@@ -17,6 +17,12 @@ public class Restaurant extends BaseEntity {
     @Column(name = "sync_code", nullable = false, unique = true)
     private String syncCode;
 
+    @Column(name = "biller_sync_code", unique = true)
+    private String billerSyncCode;
+
+    @Column(name = "waiter_sync_code", unique = true)
+    private String waiterSyncCode;
+
     @Column(name = "is_active", nullable = false)
     private boolean isActive = true;
 
@@ -28,6 +34,7 @@ public class Restaurant extends BaseEntity {
     public Restaurant(String name, String syncCode, boolean isActive) {
         this.name = name;
         this.syncCode = syncCode;
+        this.billerSyncCode = syncCode;
         this.isActive = isActive;
     }
 
@@ -40,11 +47,27 @@ public class Restaurant extends BaseEntity {
     }
 
     public String getSyncCode() {
-        return syncCode;
+        return syncCode != null ? syncCode : billerSyncCode;
     }
 
     public void setSyncCode(String syncCode) {
         this.syncCode = syncCode;
+    }
+
+    public String getBillerSyncCode() {
+        return billerSyncCode != null ? billerSyncCode : syncCode;
+    }
+
+    public void setBillerSyncCode(String billerSyncCode) {
+        this.billerSyncCode = billerSyncCode;
+    }
+
+    public String getWaiterSyncCode() {
+        return waiterSyncCode;
+    }
+
+    public void setWaiterSyncCode(String waiterSyncCode) {
+        this.waiterSyncCode = waiterSyncCode;
     }
 
     public boolean isActive() {

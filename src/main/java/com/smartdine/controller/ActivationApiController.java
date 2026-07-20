@@ -66,9 +66,25 @@ public class ActivationApiController {
     @PostMapping("/save-config")
     public ResponseEntity<?> saveConfig(@RequestBody Map<String, Object> request) {
         try {
-            String syncCode = request.get("syncCode") != null ? request.get("syncCode").toString() : "SD-28E792";
-            String restId = request.get("restaurantId") != null ? request.get("restaurantId").toString() : "28e79200-0000-4000-a000-000000000001";
+            String syncCode = request.get("syncCode") != null ? request.get("syncCode").toString() : ("SD-" + (100000 + (int)(Math.random() * 900000)));
+            String restId = request.get("restaurantId") != null ? request.get("restaurantId").toString() : java.util.UUID.randomUUID().toString();
             
+            String restName = request.get("restaurantName") != null ? request.get("restaurantName").toString() : null;
+            if (restName == null && request.get("profile") instanceof Map) {
+                Object pName = ((Map) request.get("profile")).get("restaurantName");
+                if (pName != null) restName = pName.toString();
+            }
+            if (restName == null || restName.isEmpty()) restName = "SmartDine Restaurant";
+
+            String ownerName = request.get("ownerName") != null ? request.get("ownerName").toString() : null;
+            if (ownerName == null && request.get("profile") instanceof Map) {
+                Object pOwner = ((Map) request.get("profile")).get("ownerName");
+                if (pOwner != null) ownerName = pOwner.toString();
+            }
+            if (ownerName == null) ownerName = "Manager";
+
+            String ownerEmail = request.get("ownerEmail") != null ? request.get("ownerEmail").toString() : "";
+
             String fileName = "activation-" + syncCode.trim().toLowerCase() + ".json";
             java.io.File file = new java.io.File(fileName);
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
@@ -107,8 +123,18 @@ public class ActivationApiController {
                     String name = item.get("name") != null ? item.get("name").toString() : "";
                     String shortCode = item.get("code") != null ? item.get("code").toString() : (name.length() >= 3 ? name.substring(0, 3).toUpperCase() : name.toUpperCase());
                     double price = item.get("price") != null ? Double.parseDouble(item.get("price").toString()) : 0.0;
-                    boolean veg = item.get("type") != null ? item.get("type").toString().equalsIgnoreCase("Veg") : true;
-                    String category = item.get("category") != null ? item.get("category").toString() : "General";
+                    boolean veg = true;
+                    if (item.get("veg") != null) {
+                        if (item.get("veg") instanceof Boolean) {
+                            veg = (Boolean) item.get("veg");
+                        } else {
+                            veg = !item.get("veg").toString().equalsIgnoreCase("false");
+                        }
+                    } else if (item.get("type") != null) {
+                        veg = item.get("type").toString().equalsIgnoreCase("Veg");
+                    }
+                    
+                    String category = item.get("categoryName") != null ? item.get("categoryName").toString() : (item.get("category") != null ? item.get("category").toString() : "General");
                     
                     mappedMenuItems.add(Map.of(
                         "name", name,
@@ -153,7 +179,9 @@ public class ActivationApiController {
             
             Map<String, Object> gatewayPayload = new java.util.HashMap<>();
             gatewayPayload.put("restaurantId", restId);
-            gatewayPayload.put("restaurantName", request.get("restaurantName") != null ? request.get("restaurantName").toString() : "SmartDine Custom POS");
+            gatewayPayload.put("restaurantName", restName);
+            gatewayPayload.put("ownerName", ownerName);
+            gatewayPayload.put("ownerEmail", ownerEmail);
             gatewayPayload.put("cgstRate", new java.math.BigDecimal("2.50"));
             gatewayPayload.put("sgstRate", new java.math.BigDecimal("2.50"));
             gatewayPayload.put("serviceChargeRate", new java.math.BigDecimal("5.00"));
@@ -203,6 +231,21 @@ public class ActivationApiController {
         // 4. Query all orders of last 30 days
         java.time.LocalDateTime startOfThirtyDaysAgo = java.time.LocalDateTime.now().minusDays(30).withHour(0).withMinute(0).withSecond(0).withNano(0);
         java.util.List<com.smartdine.coreheart.Order> allOrders = orderRepository.findByRestaurantIdAndStartedAtAfter(restaurantId, startOfThirtyDaysAgo);
+        
+        if (allOrders.isEmpty()) {
+            // Fallback 1: Try SystemConfig restaurantId if different
+            java.util.Optional<com.smartdine.coreheart.SystemConfig> sysOpt = activationService.getSystemConfig();
+            if (sysOpt.isPresent() && !sysOpt.get().getRestaurantId().equals(restaurantId)) {
+                allOrders = orderRepository.findByRestaurantIdAndStartedAtAfter(sysOpt.get().getRestaurantId(), startOfThirtyDaysAgo);
+            }
+        }
+
+        if (allOrders.isEmpty()) {
+            // Fallback 2: Retrieve all recent orders for local machine POS demo
+            allOrders = orderRepository.findAll().stream()
+                .filter(o -> o.getStartedAt() != null && !o.getStartedAt().isBefore(startOfThirtyDaysAgo))
+                .collect(java.util.stream.Collectors.toList());
+        }
 
         // 5. Calculations for different time boundaries
         java.time.LocalDateTime todayStart = java.time.LocalDateTime.now().withHour(0).withMinute(0).withSecond(0).withNano(0);
@@ -232,13 +275,13 @@ public class ActivationApiController {
 
         for (com.smartdine.coreheart.Order o : allOrders) {
             java.time.LocalDateTime started = o.getStartedAt();
-            java.math.BigDecimal total = o.getGrandTotal();
-            boolean isPaid = o.getStatus() == com.smartdine.coreheart.OrderStatus.PAID;
+            java.math.BigDecimal total = o.getGrandTotal() != null ? o.getGrandTotal() : java.math.BigDecimal.ZERO;
+            boolean isNonCancelled = o.getStatus() != com.smartdine.coreheart.OrderStatus.CANCELLED;
 
-            if (started.isAfter(todayStart)) {
+            if (!started.isBefore(todayStart)) {
                 todayOrderIds.add(o.getId());
                 todayOrdersCount++;
-                if (isPaid) {
+                if (isNonCancelled) {
                     todaySales = todaySales.add(total);
                     
                     // Channel sales
@@ -259,18 +302,20 @@ public class ActivationApiController {
                         if (payMode.equalsIgnoreCase("UPI")) todayUpiSales = todayUpiSales.add(total);
                         else if (payMode.equalsIgnoreCase("CASH")) todayCashSales = todayCashSales.add(total);
                         else if (payMode.equalsIgnoreCase("CARD")) todayCardSales = todayCardSales.add(total);
+                    } else {
+                        todayCashSales = todayCashSales.add(total);
                     }
                 }
-            } else if (started.isAfter(yesterdayStart)) {
-                if (isPaid) yesterdaySales = yesterdaySales.add(total);
+            } else if (!started.isBefore(yesterdayStart)) {
+                if (isNonCancelled) yesterdaySales = yesterdaySales.add(total);
             }
 
-            if (started.isAfter(weekStart)) {
-                if (isPaid) weeklySales = weeklySales.add(total);
+            if (!started.isBefore(weekStart)) {
+                if (isNonCancelled) weeklySales = weeklySales.add(total);
             }
 
-            if (started.isAfter(monthStart)) {
-                if (isPaid) monthlySales = monthlySales.add(total);
+            if (!started.isBefore(monthStart)) {
+                if (isNonCancelled) monthlySales = monthlySales.add(total);
             }
         }
 

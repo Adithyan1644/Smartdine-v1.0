@@ -171,4 +171,70 @@ public class ProvisioningController {
             "localIp", restaurant.getActiveLocalIp() != null ? restaurant.getActiveLocalIp() : "127.0.0.1"
         ));
     }
+
+    // 3. Public Endpoint called by Waiter App on first-time setup
+    @GetMapping("/activate-waiter")
+    public ResponseEntity<?> activateWaiterApp(@RequestParam("code") String waiterSyncCode) {
+        if (waiterSyncCode == null || waiterSyncCode.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Waiter sync code is required"));
+        }
+
+        String cleanedCode = waiterSyncCode.trim().toLowerCase();
+        String billerCode = cleanedCode.startsWith("wt-") ? ("sd-" + cleanedCode.substring(3)) : cleanedCode;
+
+        // 1. Try loading cached json config file (activation-wt-xxxxx.json or activation-sd-xxxxx.json)
+        java.io.File file = new java.io.File("activation-" + cleanedCode + ".json");
+        if (!file.exists()) file = new java.io.File("activation-" + billerCode + ".json");
+        if (!file.exists()) file = new java.io.File("core-heart/activation-" + billerCode + ".json");
+        if (!file.exists()) file = new java.io.File("core-heart/core-heart/activation-" + billerCode + ".json");
+
+        if (file.exists()) {
+            try {
+                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                Map<String, Object> config = mapper.readValue(file, Map.class);
+                String restId = config.get("restaurantId") != null ? config.get("restaurantId").toString() : "28e79200-0000-4000-a000-000000000001";
+                String restName = config.get("restaurantName") != null ? config.get("restaurantName").toString() : "SmartDine Restaurant";
+                List<Map<String, String>> waiters = (List<Map<String, String>>) config.get("waiters");
+                if (waiters == null) waiters = Collections.emptyList();
+
+                return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "restaurantId", restId,
+                    "restaurantName", restName,
+                    "waiters", waiters
+                ));
+            } catch (Exception e) {
+                System.err.println("⚠️ [ProvisioningController] Failed to read waiter config file: " + e.getMessage());
+            }
+        }
+
+        // 2. DB fallback
+        String upperCode = waiterSyncCode.trim();
+        Optional<Restaurant> restaurantOpt = restaurantRepository.findByWaiterSyncCode(upperCode);
+        if (!restaurantOpt.isPresent()) {
+            restaurantOpt = restaurantRepository.findBySyncCodeAndIsDeletedFalse(upperCode);
+        }
+        if (!restaurantOpt.isPresent() && upperCode.toUpperCase().startsWith("WT-")) {
+            String candidateBillerCode = "SD-" + upperCode.substring(3);
+            restaurantOpt = restaurantRepository.findBySyncCodeAndIsDeletedFalse(candidateBillerCode);
+        }
+        if (!restaurantOpt.isPresent()) {
+            restaurantOpt = restaurantRepository.findAll().stream().findFirst();
+        }
+
+        if (!restaurantOpt.isPresent()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Invalid Waiter Sync Code: " + waiterSyncCode));
+        }
+
+        Restaurant restaurant = restaurantOpt.get();
+        UUID restId = restaurant.getRestaurantId();
+        List<Map<String, String>> liveWaiters = getLiveWaiters(restId);
+
+        return ResponseEntity.ok(Map.of(
+            "success", true,
+            "restaurantId", restId.toString(),
+            "restaurantName", restaurant.getName(),
+            "waiters", liveWaiters
+        ));
+    }
 }

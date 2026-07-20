@@ -49,6 +49,12 @@ public class UiLoginController {
         }
     }
 
+    public void setPreFilledUsername(String username) {
+        if (usernameField != null && username != null) {
+            usernameField.setText(username);
+        }
+    }
+
     @FXML
     public void handleLogin(ActionEvent event) {
         String username = usernameField.getText();

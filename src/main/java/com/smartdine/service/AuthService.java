@@ -94,6 +94,7 @@ public class AuthService {
     public java.util.Map<String, Object> registerNewTenant(String restaurantName, String username, String email, String password) {
         // 1. Create and save a new Restaurant
         String finalSyncCode = "";
+        String waiterSyncCode = "";
         java.util.Random random = new java.util.Random();
         boolean unique = false;
         while (!unique) {
@@ -101,11 +102,14 @@ public class AuthService {
             String candidate = "SD-" + codeInt;
             if (!restaurantRepository.findBySyncCodeAndIsDeletedFalse(candidate).isPresent()) {
                 finalSyncCode = candidate;
+                waiterSyncCode = "WT-" + codeInt;
                 unique = true;
             }
         }
 
         Restaurant restaurant = new Restaurant(restaurantName, finalSyncCode, true);
+        restaurant.setBillerSyncCode(finalSyncCode);
+        restaurant.setWaiterSyncCode(waiterSyncCode);
         restaurant.setRestaurantId(UUID.randomUUID()); // unique identifier for the tenant
         restaurant = restaurantRepository.save(restaurant);
 

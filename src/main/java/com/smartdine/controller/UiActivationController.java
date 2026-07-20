@@ -53,6 +53,12 @@ public class UiActivationController {
 
     // Step 2 Fields
     @FXML
+    private Label detectedRestaurantLabel;
+
+    @FXML
+    private Label detectedOwnerLabel;
+
+    @FXML
     private TextField adminUserField;
 
     @FXML
@@ -72,7 +78,7 @@ public class UiActivationController {
 
     @FXML
     public void initialize() {
-        // Set default gateway URL to the live Express API Server for strong sync integration
+        // Set default gateway URL to local Spring Boot endpoint
         if (gatewayUrlField != null) {
             gatewayUrlField.setText("http://localhost:8080/api/public/provision");
         }
@@ -118,13 +124,23 @@ public class UiActivationController {
         Thread.ofVirtual().start(() -> {
             try {
                 Platform.runLater(() -> statusLabel.setText("Connecting to Cloud Gateway..."));
-                Thread.sleep(800); // Aesthetic pause to let the user see progress
+                Thread.sleep(600); // Aesthetic pause
 
                 Platform.runLater(() -> statusLabel.setText("Downloading table map & menu configuration..."));
-                activationService.activateSystem(finalCode, finalGateway);
-                Thread.sleep(800);
+                java.util.Map<String, Object> config = activationService.activateSystem(finalCode, finalGateway);
+                Thread.sleep(600);
+
+                String restName = (config != null && config.get("restaurantName") != null) 
+                        ? config.get("restaurantName").toString() 
+                        : "AVKK";
+                String ownerEmail = (config != null && config.get("ownerEmail") != null) 
+                        ? config.get("ownerEmail").toString() 
+                        : "ADITHYAN (adithyanvijayan21644@gmail.com)";
 
                 Platform.runLater(() -> {
+                    if (detectedRestaurantLabel != null) detectedRestaurantLabel.setText(restName);
+                    if (detectedOwnerLabel != null) detectedOwnerLabel.setText(ownerEmail);
+
                     loadingContainer.setVisible(false);
                     loadingContainer.setManaged(false);
                     step1Container.setVisible(false);
@@ -179,19 +195,24 @@ public class UiActivationController {
 
                 Platform.runLater(() -> {
                     try {
-                        // Switch scene to main POS dashboard
+                        // Switch scene to SMARTDINE Login Screen (/ui/login.fxml)
                         Stage stage = (Stage) rootPane.getScene().getWindow();
-                        FXMLLoader loader = new FXMLLoader(getClass().getResource("/ui/dashboard.fxml"));
+                        FXMLLoader loader = new FXMLLoader(getClass().getResource("/ui/login.fxml"));
                         loader.setControllerFactory(springContext::getBean);
 
                         Parent root = loader.load();
+                        UiLoginController loginController = loader.getController();
+                        if (loginController != null) {
+                            loginController.setPreFilledUsername(username);
+                        }
+
                         Scene scene = new Scene(root);
                         stage.setScene(scene);
-                        stage.setTitle("SMARTDINE BILLER STATION");
+                        stage.setTitle("SMARTDINE Login");
                         stage.show();
                     } catch (Exception e) {
                         completeBtn.setDisable(false);
-                        showError(errorLabel2, "Failed to load dashboard: " + e.getMessage());
+                        showError(errorLabel2, "Failed to load login screen: " + e.getMessage());
                     }
                 });
             } catch (Exception e) {

@@ -1,39 +1,44 @@
 package com.smartdine.controller;
 
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.Map;
 import java.util.UUID;
 
-/**
- * Cloud-side Controller to receive Swiggy/Zomato webhook events.
- */
 @RestController
-@RequestMapping("/webhooks")
+@RequestMapping("/api/public/webhooks")
+@CrossOrigin(origins = "*")
 public class WebhookController {
 
     @Autowired
     private TunnelWebSocketHandler tunnelHandler;
 
-    @PostMapping("/{provider}")
-    public ResponseEntity<?> receiveWebhook(
-            @PathVariable String provider,
-            @RequestBody String payload,
-            @RequestParam UUID restaurantId) {
+    @PostMapping("/aggregator")
+    public ResponseEntity<String> receiveWebhook(
+            @RequestParam("restaurantId") UUID restaurantId,
+            @RequestBody String orderJsonPayload) {
         
-        System.out.println("📥 [WebhookController] Received webhook from: " + provider + " | Restaurant: " + restaurantId);
-
-        // Forward the payload down the active tunnel session
-        boolean forwarded = tunnelHandler.forwardWebhook(restaurantId, provider, payload);
-
-        if (forwarded) {
-            return ResponseEntity.ok(Map.of("success", true, "message", "Webhook routed successfully to local POS"));
+        boolean delivered = tunnelHandler.forwardWebhook(restaurantId, orderJsonPayload);
+        
+        if (delivered) {
+            return ResponseEntity.ok("Order routed successfully");
         } else {
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                    .body(Map.of("success", false, "error", "Local POS system is offline or unreachable"));
+            return ResponseEntity.status(503).body("Restaurant POS is currently OFFLINE");
+        }
+    }
+
+    @PostMapping("/{provider}")
+    public ResponseEntity<String> receiveProviderWebhook(
+            @PathVariable("provider") String provider,
+            @RequestParam("restaurantId") UUID restaurantId,
+            @RequestBody String orderJsonPayload) {
+        
+        boolean delivered = tunnelHandler.forwardWebhook(restaurantId, provider, orderJsonPayload);
+        
+        if (delivered) {
+            return ResponseEntity.ok("Order routed successfully");
+        } else {
+            return ResponseEntity.status(503).body("Restaurant POS is currently OFFLINE");
         }
     }
 }

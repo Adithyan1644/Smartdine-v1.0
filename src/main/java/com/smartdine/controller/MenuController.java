@@ -34,6 +34,13 @@ public class MenuController {
         return categoryRepository.save(category);
     }
 
+    // 1b. Get Categories for the Waiter App / Admin
+    @GetMapping("/categories")
+    public List<Category> getCategories() {
+        UUID restaurantId = TenantContext.getRestaurantId();
+        return categoryRepository.findByRestaurantId(restaurantId);
+    }
+
     // 2. Add a New Food Item
     @PostMapping("/items")
     public MenuItem createMenuItem(@RequestBody MenuItem item) {
@@ -45,10 +52,7 @@ public class MenuController {
     @GetMapping("/items")
     public List<MenuItem> getMenu() {
         UUID restaurantId = TenantContext.getRestaurantId();
-        return menuRepository.findByRestaurantIdAndIsDeletedFalse(restaurantId)
-                .stream()
-                .filter(MenuItem::isTodaysMenu)
-                .collect(java.util.stream.Collectors.toList());
+        return menuRepository.findByRestaurantIdAndIsDeletedFalse(restaurantId);
     }
 
     // 4. Toggle Availability (Stock Status)

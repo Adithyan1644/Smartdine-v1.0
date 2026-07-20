@@ -1,0 +1,193 @@
+{
+  "tables": [
+    {
+      "tableNumber": "T-01",
+      "areaName": "Ground Floor",
+      "capacity": 4
+    },
+    {
+      "tableNumber": "T-02",
+      "areaName": "Ground Floor",
+      "capacity": 4
+    },
+    {
+      "tableNumber": "T-03",
+      "areaName": "Ground Floor",
+      "capacity": 4
+    },
+    {
+      "tableNumber": "T-04",
+      "areaName": "Ground Floor",
+      "capacity": 4
+    },
+    {
+      "tableNumber": "T-05",
+      "areaName": "Ground Floor",
+      "capacity": 4
+    },
+    {
+      "tableNumber": "T-06",
+      "areaName": "AC Room",
+      "capacity": 4
+    },
+    {
+      "tableNumber": "T-07",
+      "areaName": "AC Room",
+      "capacity": 4
+    },
+    {
+      "tableNumber": "T-08",
+      "areaName": "AC Room",
+      "capacity": 4
+    },
+    {
+      "tableNumber": "T-09",
+      "areaName": "AC Room",
+      "capacity": 4
+    },
+    {
+      "tableNumber": "T-10",
+      "areaName": "AC Room",
+      "capacity": 4
+    },
+    {
+      "tableNumber": "T-11",
+      "areaName": "AC Room",
+      "capacity": 4
+    },
+    {
+      "tableNumber": "T-12",
+      "areaName": "AC Room",
+      "capacity": 4
+    },
+    {
+      "tableNumber": "T-13",
+      "areaName": "AC Room",
+      "capacity": 4
+    },
+    {
+      "tableNumber": "T-14",
+      "areaName": "AC Room",
+      "capacity": 4
+    },
+    {
+      "tableNumber": "T-15",
+      "areaName": "AC Room",
+      "capacity": 4
+    },
+    {
+      "tableNumber": "T-16",
+      "areaName": "Caffet Area",
+      "capacity": 4
+    },
+    {
+      "tableNumber": "T-17",
+      "areaName": "Caffet Area",
+      "capacity": 4
+    },
+    {
+      "tableNumber": "T-18",
+      "areaName": "Caffet Area",
+      "capacity": 4
+    },
+    {
+      "tableNumber": "T-19",
+      "areaName": "Caffet Area",
+      "capacity": 4
+    },
+    {
+      "tableNumber": "T-20",
+      "areaName": "Caffet Area",
+      "capacity": 4
+    }
+  ],
+  "serviceChargeRate": 5,
+  "restaurantName": "AVKK",
+  "menuItems": [
+    {
+      "veg": false,
+      "price": 250,
+      "shortCode": "BC",
+      "name": "Butter Chicken",
+      "categoryName": "General"
+    },
+    {
+      "veg": false,
+      "price": 200,
+      "shortCode": "CB",
+      "name": "Chicken Briyani",
+      "categoryName": "General"
+    },
+    {
+      "veg": true,
+      "price": 200,
+      "shortCode": "PBM",
+      "name": "Paneer butter Masala",
+      "categoryName": "General"
+    },
+    {
+      "veg": true,
+      "price": 70,
+      "shortCode": "F",
+      "name": "Franki",
+      "categoryName": "Chinese"
+    },
+    {
+      "veg": true,
+      "price": 130,
+      "shortCode": "VM",
+      "name": "Veg manchurian",
+      "categoryName": "Chinese"
+    }
+  ],
+  "waiters": [
+    {
+      "status": "Active",
+      "pin": "4022",
+      "name": "Arjun"
+    }
+  ],
+  "cgstRate": 2.5,
+  "sgstRate": 2.5,
+  "categories": [
+    "General",
+    "Chinese"
+  ],
+  "restaurantId": "28e79200-0000-4000-a000-000000000001",
+  "modifierGroups": [
+    {
+      "options": [
+        {
+          "name": "Water 500ml",
+          "price": 10
+        },
+        {
+          "name": "Water 1L",
+          "price": 20
+        },
+        {
+          "name": "Cold Drink",
+          "price": 20
+        }
+      ],
+      "isGlobal": true,
+      "name": "Global Drinks"
+    },
+    {
+      "options": [
+        {
+          "name": "Mayonnaise",
+          "price": 15
+        },
+        {
+          "name": "Tomato Ketchup",
+          "price": 0
+        }
+      ],
+      "isGlobal": true,
+      "name": "Global Sides & Sauces"
+    }
+  ],
+  "ownerName": "ADITHYAN",
+  "ownerEmail": "adithyanvijayan21644@gmail.com"
+}

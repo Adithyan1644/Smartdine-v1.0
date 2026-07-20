@@ -87,7 +87,7 @@ public class ActivationService {
      * Executes the cloud handshake, pulls config, seeds the database.
      */
     @Transactional
-    public void activateSystem(String activationCode, String gatewayUrl) throws Exception {
+    public Map<String, Object> activateSystem(String activationCode, String gatewayUrl) throws Exception {
         if (activationCode == null || activationCode.trim().isEmpty()) {
             throw new IllegalArgumentException("Activation code cannot be empty");
         }
@@ -114,9 +114,15 @@ public class ActivationService {
         UUID restaurantId = UUID.fromString((String) config.get("restaurantId"));
         String restaurantName = (String) config.get("restaurantName");
         
-        BigDecimal cgstRate = new BigDecimal(config.get("cgstRate").toString());
-        BigDecimal sgstRate = new BigDecimal(config.get("sgstRate").toString());
-        BigDecimal serviceChargeRate = new BigDecimal(config.get("serviceChargeRate").toString());
+        BigDecimal cgstRate = config.get("cgstRate") != null 
+                ? new BigDecimal(config.get("cgstRate").toString()) 
+                : new BigDecimal("2.50");
+        BigDecimal sgstRate = config.get("sgstRate") != null 
+                ? new BigDecimal(config.get("sgstRate").toString()) 
+                : new BigDecimal("2.50");
+        BigDecimal serviceChargeRate = config.get("serviceChargeRate") != null 
+                ? new BigDecimal(config.get("serviceChargeRate").toString()) 
+                : new BigDecimal("0.00");
 
         // Set tenant context for this bootstrap run
         TenantContext.setRestaurantId(restaurantId);
@@ -248,8 +254,22 @@ public class ActivationService {
                     item.setRestaurantId(restaurantId);
                     item.setName((String) itm.get("name"));
                     item.setShortCode((String) itm.get("shortCode"));
-                    item.setPrice(new BigDecimal(itm.get("price").toString()));
-                    item.setVeg((Boolean) itm.get("veg"));
+                    
+                    Object priceObj = itm.get("price");
+                    BigDecimal price = priceObj != null ? new BigDecimal(priceObj.toString()) : BigDecimal.ZERO;
+                    item.setPrice(price);
+
+                    boolean isVeg = true;
+                    if (itm.get("veg") != null) {
+                        if (itm.get("veg") instanceof Boolean) {
+                            isVeg = (Boolean) itm.get("veg");
+                        } else {
+                            isVeg = !itm.get("veg").toString().equalsIgnoreCase("false");
+                        }
+                    } else if (itm.get("type") != null) {
+                        isVeg = itm.get("type").toString().equalsIgnoreCase("Veg");
+                    }
+                    item.setVeg(isVeg);
                     item.setAvailable(true);
 
                     String catName = (String) itm.get("categoryName");
@@ -307,6 +327,7 @@ public class ActivationService {
             kitchen.setActive(true);
             userRepository.save(kitchen);
 
+            return config;
         } finally {
             TenantContext.clear();
         }
