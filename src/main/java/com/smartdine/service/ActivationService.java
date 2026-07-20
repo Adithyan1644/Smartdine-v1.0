@@ -95,8 +95,17 @@ public class ActivationService {
             throw new IllegalArgumentException("Cloud Gateway URL cannot be empty");
         }
 
-        // 1. Fetch Configuration from Mock Cloud Gateway
-        String url = gatewayUrl.trim() + "/activate?code=" + activationCode.trim();
+        // 1. Fetch Configuration from Cloud Gateway (with sanitized URL path)
+        String base = gatewayUrl.trim();
+        while (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        String url;
+        if (base.endsWith("/activate")) {
+            url = base + "?code=" + activationCode.trim();
+        } else {
+            url = base + "/activate?code=" + activationCode.trim();
+        }
         RestTemplate restTemplate = new RestTemplate();
         Map<String, Object> config;
         try {

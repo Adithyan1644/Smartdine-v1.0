@@ -25,6 +25,9 @@ public class ActivationApiController {
     @Autowired
     private com.smartdine.repository.MenuRepository menuRepository;
 
+    @Autowired
+    private ProvisioningController provisioningController;
+
     @GetMapping("/status")
     public ResponseEntity<?> getStatus() {
         boolean activated = activationService.isSystemActivated();
@@ -33,6 +36,11 @@ public class ActivationApiController {
             "restaurantId", activationService.getSystemConfig().map(c -> c.getRestaurantId().toString()).orElse(""),
             "restaurantName", activationService.getSystemConfig().map(c -> c.getRestaurantName()).orElse("")
         ));
+    }
+
+    @GetMapping("/activate")
+    public ResponseEntity<?> activateViaGet(@RequestParam String code) {
+        return provisioningController.activate(code);
     }
 
     @PostMapping("/activate")
