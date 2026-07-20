@@ -55,7 +55,7 @@ public class SecurityConfig {
                     .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/auth/**", "/ws/**", "/error", "/api/mock-cloud/**", "/api/activation/**", "/api/public/provision/**").permitAll() // Allow Login, WebSockets, mock cloud, activation, error, and provisioning path
+                .requestMatchers("/auth/**", "/ws/**", "/error", "/api/mock-cloud/**", "/api/activation/**", "/api/public/provision/**", "/api/public/webhooks/**").permitAll() // Allow Login, WebSockets, mock cloud, activation, error, webhooks, and provisioning path
                 
                 // Allow Waiters, Billers, and Admins to VIEW tables (GET) and update status (PATCH), but NOT create/edit them
                 .requestMatchers(HttpMethod.GET, "/api/admin/tables", "/api/admin/tables/**").hasAnyRole("WAITER", "BILLER", "ADMIN")
