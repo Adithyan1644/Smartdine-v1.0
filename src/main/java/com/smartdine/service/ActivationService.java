@@ -179,22 +179,21 @@ public class ActivationService {
             systemConfigRepository.save(sysConfig);
             TenantContext.setActiveRestaurantId(restaurantId);
 
-            // 4b. Upsert the Restaurant record so sync-code lookups work correctly.
-            // Without this row, ProvisioningController cannot resolve the restaurant
-            // by syncCode and falls back to hardcoded dummy waiters.
-            com.smartdine.coreheart.Restaurant restaurantRecord =
-                restaurantRepository.findBySyncCodeAndIsDeletedFalse(activationCode.trim())
-                    .orElse(new com.smartdine.coreheart.Restaurant());
+            // 4b. Re-create the Restaurant record so sync-code lookups work correctly.
+            // Delete old restaurant row if it exists so we can update the immutable restaurantId.
+            restaurantRepository.findBySyncCodeAndIsDeletedFalse(activationCode.trim())
+                .ifPresent(r -> {
+                    restaurantRepository.delete(r);
+                    restaurantRepository.flush();
+                });
+
+            com.smartdine.coreheart.Restaurant restaurantRecord = new com.smartdine.coreheart.Restaurant();
             restaurantRecord.setName(restaurantName);
             restaurantRecord.setSyncCode(activationCode.trim());
             restaurantRecord.setActive(true);
-            // Restaurant entity uses restaurant_id to store its own UUID (it's the root).
-            // Must satisfy the BaseEntity NOT NULL constraint.
-            if (restaurantRecord.getRestaurantId() == null) {
-                restaurantRecord.setRestaurantId(restaurantId);
-            }
+            restaurantRecord.setRestaurantId(restaurantId);
             restaurantRepository.save(restaurantRecord);
-            System.out.println("✅ [ActivationService] Restaurant row upserted with syncCode=" + activationCode.trim());
+            System.out.println("✅ [ActivationService] Restaurant row upserted with syncCode=" + activationCode.trim() + ", restaurantId=" + restaurantId);
 
             // Trigger GCP IP Reporting immediately on activation
             if (cloudIpReporter != null) {
