@@ -34,6 +34,9 @@ public class OrderService {
     @Autowired
     private SimpMessagingTemplate messagingTemplate; // Injected the WebSocket Publisher
 
+    @Autowired
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
     @Transactional
     public KOT processNewKOT(OrderRequest request) {
         UUID restaurantId = TenantContext.getRestaurantId();
@@ -186,6 +189,9 @@ public class OrderService {
             }
             messagingTemplate.convertAndSend(tableTopic, tablePayload);
             System.out.println("📢 WebSocket Table Update Broadcast sent to topic: " + tableTopic);
+            
+            // Publish local JVM event for JavaFX UI
+            eventPublisher.publishEvent(new com.smartdine.coreheart.TableUpdateEvent(this));
         } catch (Exception e) {
             System.err.println("❌ Failed to send WebSocket notifications: " + e.getMessage());
         }
