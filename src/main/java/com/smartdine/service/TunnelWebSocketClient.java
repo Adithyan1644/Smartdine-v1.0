@@ -23,12 +23,21 @@ import java.util.concurrent.TimeUnit;
 public class TunnelWebSocketClient implements CommandLineRunner {
 
     // ✅ Update this to your deployed GCP Cloud Run Domain
-    private final String CLOUD_WS_URL = "wss://smartdine-v1-0-git-635032287458.europe-west1.run.app/ws/tunnel";
-    private final UUID restaurantId = UUID.fromString("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"); // Bound locally
+    private final String CLOUD_WS_URL = "wss://smartdine-saas.ew.r.appspot.com/ws/tunnel";
 
     @Autowired private MenuRepository menuRepository;
     @Autowired private TableRepository tableRepository;
     @Autowired private CategoryRepository categoryRepository;
+    
+    @Autowired 
+    private com.smartdine.repository.SystemConfigRepository systemConfigRepository;
+
+    private UUID getActiveRestaurantId() {
+        return systemConfigRepository.findAll().stream()
+                .findFirst()
+                .map(com.smartdine.coreheart.SystemConfig::getRestaurantId)
+                .orElse(UUID.fromString("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"));
+    }
     
     @Autowired 
     private SimpMessagingTemplate localWebSocketTemplate; // Injected for local Wi-Fi broadcasts
@@ -47,13 +56,14 @@ public class TunnelWebSocketClient implements CommandLineRunner {
             return;
         }
 
-        System.out.println("🔌 Local: Connecting to Cloud Tunnel at: " + CLOUD_WS_URL);
+        final UUID resolvedRestaurantId = getActiveRestaurantId();
+        System.out.println("🔌 Local: Connecting to Cloud Tunnel for restaurant " + resolvedRestaurantId + " at: " + CLOUD_WS_URL);
         StandardWebSocketClient client = new StandardWebSocketClient();
         WebSocketHttpHeaders headers = new WebSocketHttpHeaders();
-        headers.add("X-Restaurant-ID", restaurantId.toString());
+        headers.add("X-Restaurant-ID", resolvedRestaurantId.toString());
 
         try {
-            URI uri = URI.create(CLOUD_WS_URL + "?restaurantId=" + restaurantId.toString());
+            URI uri = URI.create(CLOUD_WS_URL + "?restaurantId=" + resolvedRestaurantId.toString());
             client.execute(new TextWebSocketHandler() {
                 @Override
                 public void afterConnectionEstablished(WebSocketSession session) {
@@ -81,17 +91,17 @@ public class TunnelWebSocketClient implements CommandLineRunner {
                                 menuRepository.save(item); // Save natively to Postgres
                                 
                                 // Broadcast instantly to all Waiter & KDS apps over local Wi-Fi!
-                                localWebSocketTemplate.convertAndSend("/topic/menu/" + restaurantId, item);
+                                localWebSocketTemplate.convertAndSend("/topic/menu/" + resolvedRestaurantId, item);
                             } else if ("TABLE".equals(type)) {
                                 DiningTable table = objectMapper.convertValue(data, DiningTable.class);
                                 tableRepository.save(table); // Save natively to Postgres
                                 
                                 // Refresh local JavaFX Floor Map & apps
-                                localWebSocketTemplate.convertAndSend("/topic/tables/" + restaurantId, Map.of("event", "TABLES_UPDATED"));
+                                localWebSocketTemplate.convertAndSend("/topic/tables/" + resolvedRestaurantId, Map.of("event", "TABLES_UPDATED"));
                             } else if ("CATEGORY".equals(type)) {
                                 Category category = objectMapper.convertValue(data, Category.class);
                                 categoryRepository.save(category); // Save natively to Postgres
-                                localWebSocketTemplate.convertAndSend("/topic/menu/" + restaurantId, Map.of("event", "CATEGORY_UPDATED"));
+                                localWebSocketTemplate.convertAndSend("/topic/menu/" + resolvedRestaurantId, Map.of("event", "CATEGORY_UPDATED"));
                             }
                         } else if ("ONLINE_ORDER".equals(event)) {
                             System.out.println("📦 Local: Received Online Order Webhook via Cloud Tunnel!");

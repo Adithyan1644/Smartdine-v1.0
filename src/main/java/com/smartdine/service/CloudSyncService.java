@@ -23,8 +23,8 @@ import java.util.*;
 @Profile("!prod") // Active on local restaurant Billing PC
 public class CloudSyncService {
 
-    private final String CLOUD_SYNC_URL = "https://smartdine-v1-0-git-635032287458.europe-west1.run.app/api/sync/orders";
-    private final String CLOUD_BULK_SYNC_URL = "https://smartdine-v1-0-git-635032287458.europe-west1.run.app/api/sync/orders/bulk";
+    private final String CLOUD_SYNC_URL = "https://smartdine-saas.ew.r.appspot.com/api/sync/orders";
+    private final String CLOUD_BULK_SYNC_URL = "https://smartdine-saas.ew.r.appspot.com/api/sync/orders/bulk";
     private final File offlineQueueFile = new File("offline-sales-queue.json");
 
     private final RestTemplate restTemplate = new RestTemplate();
