@@ -413,6 +413,9 @@ public class UiDashboardController implements Initializable {
     @Autowired
     private MenuRepository menuRepository;
 
+    @Autowired(required = false)
+    private com.smartdine.service.CloudSyncService cloudSyncService;
+
     @Autowired
     private CategoryRepository categoryRepository;
 
@@ -3620,6 +3623,14 @@ public class UiDashboardController implements Initializable {
             order.setSettledAt(LocalDateTime.now());
 
             Order savedOrder = orderRepository.save(order);
+
+            if (cloudSyncService != null) {
+                try {
+                    cloudSyncService.syncOrderToCloud(savedOrder);
+                } catch (Exception syncEx) {
+                    System.err.println("⚠️ Local: Failed to sync order to cloud: " + syncEx.getMessage());
+                }
+            }
 
             // For Delivery and Takeaway (Pickup), create a KOT ticket for the delta cart
             // items so they show in KDS
