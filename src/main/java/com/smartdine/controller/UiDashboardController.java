@@ -7941,6 +7941,6 @@ public class UiDashboardController implements Initializable {
     @org.springframework.context.event.EventListener
     public void handleTableUpdate(com.smartdine.coreheart.TableUpdateEvent event) {
         System.out.println("📬 Received local TableUpdateEvent inside UiDashboardController.");
-        loadTablesToUi();
+        javafx.application.Platform.runLater(this::loadTablesToUi);
     }
 }

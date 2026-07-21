@@ -24,6 +24,9 @@ public class AuthController {
     @Autowired
     private RestaurantRepository restaurantRepository;
 
+    @Autowired
+    private com.smartdine.repository.SystemConfigRepository systemConfigRepository;
+
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@RequestBody LoginRequest request) {
         return ResponseEntity.ok(authService.authenticateUser(request));
@@ -50,6 +53,14 @@ public class AuthController {
 
     @PostMapping("/pin-login")
     public ResponseEntity<AuthResponse> pinLogin(@RequestBody PinLoginRequest request) {
+        UUID activeId = systemConfigRepository.findAll().stream()
+                .findFirst()
+                .map(com.smartdine.coreheart.SystemConfig::getRestaurantId)
+                .orElse(null);
+        if (activeId != null) {
+            request.setRestaurantId(activeId);
+            System.out.println("🔐 AuthController: Scoped pinLogin to active tenant ID: " + activeId);
+        }
         return ResponseEntity.ok(authService.authenticateWithPin(request));
     }
 
