@@ -307,13 +307,14 @@ public class ActivationService {
                 for (Map<String, Object> w : waitersList) {
                     String pin = (String) w.get("pin");
                     if (pin == null || pin.trim().isEmpty()) continue;
-                    if (existingPins.contains(pin.trim())) {
-                        // Waiter with this PIN was already added via admin panel — skip seeding
+                    String targetUsername = "waiter_" + pin.trim();
+                    if (existingPins.contains(pin.trim()) || userRepository.findByUsername(targetUsername).isPresent()) {
+                        // Waiter with this PIN or username was already added — skip seeding
                         continue;
                     }
                     AppUser customWaiter = new AppUser();
                     customWaiter.setRestaurantId(restaurantId);
-                    customWaiter.setUsername("waiter_" + pin.trim());
+                    customWaiter.setUsername(targetUsername);
                     customWaiter.setPassword(passwordEncoder.encode("waiter123"));
                     customWaiter.setRole(UserRole.WAITER);
                     customWaiter.setFullName((String) w.get("name"));
@@ -323,14 +324,16 @@ public class ActivationService {
                     userRepository.save(customWaiter);
                 }
             }
-            // NOTE: No fallback dummy waiter seeded — admin adds real waiters via the web panel.
 
             // Kitchen staff
-            AppUser kitchen = new AppUser();
-            kitchen.setRestaurantId(restaurantId);
-            kitchen.setUsername("kitchen");
-            kitchen.setPassword(passwordEncoder.encode("kitchen123"));
-            kitchen.setRole(UserRole.KITCHEN);
+            AppUser kitchen = userRepository.findByUsername("kitchen").orElse(null);
+            if (kitchen == null) {
+                kitchen = new AppUser();
+                kitchen.setRestaurantId(restaurantId);
+                kitchen.setUsername("kitchen");
+                kitchen.setPassword(passwordEncoder.encode("kitchen123"));
+                kitchen.setRole(UserRole.KITCHEN);
+            }
             kitchen.setFullName("Main Kitchen");
             kitchen.setPin("5050");
             kitchen.setActive(true);
@@ -366,6 +369,12 @@ public class ActivationService {
             throw new RuntimeException("API Server sync rejected: " + errorMsg);
         }
 
+        syncCloudConfiguration(config);
+    }
+
+    @Transactional
+    public void syncCloudConfiguration(Map<String, Object> config) {
+        if (config == null || !config.containsKey("restaurantId")) return;
         UUID restaurantId = UUID.fromString((String) config.get("restaurantId"));
         TenantContext.setRestaurantId(restaurantId);
 
@@ -429,38 +438,56 @@ public class ActivationService {
             // 3. Sync Menu Items
             List<Map<String, Object>> itemsList = (List<Map<String, Object>>) config.get("menuItems");
             if (itemsList != null) {
-                List<MenuItem> existingItems = menuRepository.findByRestaurantIdAndIsDeletedFalse(restaurantId);
+                List<MenuItem> existingItems = menuRepository.findByRestaurantId(restaurantId);
                 Set<String> incomingCodes = new HashSet<>();
+                Set<String> incomingNames = new HashSet<>();
                 
                 for (Map<String, Object> itm : itemsList) {
+                    String name = (String) itm.get("name");
                     String code = (String) itm.get("shortCode");
-                    incomingCodes.add(code);
+                    if (code == null || code.trim().isEmpty()) {
+                        code = (name != null && name.length() >= 3) ? name.substring(0, 3).toUpperCase() : "ITM" + (int)(Math.random() * 1000);
+                    }
+                    final String finalCode = code.trim();
+                    final String finalName = name != null ? name.trim() : "";
+
+                    if (!finalCode.isEmpty()) incomingCodes.add(finalCode);
+                    if (!finalName.isEmpty()) incomingNames.add(finalName.toLowerCase());
                     
                     MenuItem item = existingItems.stream()
-                        .filter(i -> code.equals(i.getShortCode()))
+                        .filter(i -> (i.getShortCode() != null && i.getShortCode().equalsIgnoreCase(finalCode)) ||
+                                     (i.getName() != null && i.getName().equalsIgnoreCase(finalName)))
                         .findFirst()
                         .orElse(null);
                         
                     if (item == null) {
                         item = new MenuItem();
                         item.setRestaurantId(restaurantId);
-                        item.setShortCode(code);
+                        item.setShortCode(finalCode);
                         item.setAvailable(true);
                     }
-                    item.setName((String) itm.get("name"));
-                    item.setPrice(new BigDecimal(itm.get("price").toString()));
-                    item.setVeg((Boolean) itm.get("veg"));
+                    item.setName(finalName);
+                    item.setShortCode(finalCode);
+                    if (itm.get("price") != null) {
+                        item.setPrice(new BigDecimal(itm.get("price").toString()));
+                    }
+                    if (itm.get("veg") != null) {
+                        item.setVeg(Boolean.parseBoolean(itm.get("veg").toString()));
+                    }
                     
                     String catName = (String) itm.get("categoryName");
                     Category category = categoryMap.get(catName);
                     item.setCategory(category);
                     item.setCategoryName(catName);
+                    item.setDeleted(false);
                     menuRepository.save(item);
                 }
                 
-                // Mark items as deleted if they were removed from the web dashboard
+                // Soft-delete items no longer present in incoming payload
                 for (MenuItem ext : existingItems) {
-                    if (!incomingCodes.contains(ext.getShortCode())) {
+                    boolean codeIn = ext.getShortCode() != null && incomingCodes.contains(ext.getShortCode());
+                    boolean nameIn = ext.getName() != null && incomingNames.contains(ext.getName().toLowerCase());
+                    if (!codeIn && !nameIn) {
                         ext.setDeleted(true);
                         menuRepository.save(ext);
                     }
@@ -478,22 +505,25 @@ public class ActivationService {
                 for (Map<String, Object> w : waitersList) {
                     String pin = (String) w.get("pin");
                     if (pin == null || pin.trim().isEmpty()) continue;
-                    incomingPins.add(pin.trim());
+                    String targetPin = pin.trim();
+                    incomingPins.add(targetPin);
 
-                    AppUser waiter = existingUsers.stream()
-                        .filter(u -> pin.trim().equals(u.getPin()))
-                        .findFirst()
-                        .orElse(null);
+                    String targetUsername = "waiter_" + targetPin;
+                    AppUser waiter = userRepository.findByUsername(targetUsername)
+                        .orElseGet(() -> existingUsers.stream()
+                            .filter(u -> targetPin.equals(u.getPin()))
+                            .findFirst()
+                            .orElse(null));
 
                     if (waiter == null) {
                         waiter = new AppUser();
                         waiter.setRestaurantId(restaurantId);
-                        waiter.setPin(pin.trim());
                         waiter.setRole(UserRole.WAITER);
                         waiter.setPassword(passwordEncoder.encode("waiter123"));
                     }
+                    waiter.setPin(targetPin);
+                    waiter.setUsername(targetUsername);
                     waiter.setFullName((String) w.get("name"));
-                    waiter.setUsername("waiter_" + pin.trim());
                     String status = (String) w.get("status");
                     waiter.setActive(status == null || status.equalsIgnoreCase("Active"));
                     userRepository.save(waiter);

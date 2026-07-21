@@ -1,9 +1,12 @@
 <service>
   <id>smartdine-heart</id>
-  <name>SmartDine Heart Service</name>
-  <description>Self-healing local background service for the SmartDine POS backend application</description>
-  <executable>%BASE%\jre\bin\java.exe</executable>
-  <arguments>-jar "%BASE%\smartdine-heart.jar"</arguments>
+  <name>Surabhi SmartDine Heart Service</name>
+  <description>Manages local database transactions, printing, and real-time mobile syncing.</description>
+  
+  <executable>%BASE%\jre\bin\java</executable>
+  <arguments>-Dspring.profiles.active=local -jar "%BASE%\smartdine-heart.jar"</arguments>
+  
   <logmode>rotate</logmode>
+  <startmode>Automatic</startmode>
   <onfailure action="restart" delay="10 sec"/>
 </service>

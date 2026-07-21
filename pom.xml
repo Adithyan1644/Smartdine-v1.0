@@ -143,6 +143,15 @@
 					</annotationProcessorPaths>
 				</configuration>
 			</plugin>
+			<plugin>
+				<groupId>com.google.cloud.tools</groupId>
+				<artifactId>appengine-maven-plugin</artifactId>
+				<version>2.5.0</version>
+				<configuration>
+					<projectId>smartdine-saas</projectId>
+					<version>1</version>
+				</configuration>
+			</plugin>
 		</plugins>
 	</build>
 

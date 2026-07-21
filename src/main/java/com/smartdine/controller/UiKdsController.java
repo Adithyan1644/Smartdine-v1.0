@@ -73,6 +73,9 @@ public class UiKdsController implements Initializable {
     private OrderRepository orderRepository;
 
     @Autowired
+    private com.smartdine.repository.SystemConfigRepository systemConfigRepository;
+
+    @Autowired
     @org.springframework.context.annotation.Lazy
     private UiDashboardController dashboardController;
 
@@ -205,7 +208,13 @@ public class UiKdsController implements Initializable {
     // --- MAIN REFRESH DATA PIPELINE ---
     public void refreshKdsData() {
         Platform.runLater(() -> {
-            UUID restaurantId = TenantContext.getRestaurantId();
+            UUID restaurantId = systemConfigRepository.findAll().stream()
+                    .findFirst()
+                    .map(com.smartdine.coreheart.SystemConfig::getRestaurantId)
+                    .orElse(null);
+            if (restaurantId == null) {
+                restaurantId = TenantContext.getRestaurantId();
+            }
             if (restaurantId == null) {
                 restaurantId = UUID.fromString("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11");
             }

@@ -126,10 +126,22 @@ public class ActivationApiController {
             }
             
             java.util.List<Map<String, Object>> mappedMenuItems = new java.util.ArrayList<>();
+            java.util.Set<String> usedCodes = new java.util.HashSet<>();
             if (incomingMenuItems != null) {
+                int codeCounter = 1;
                 for (Map<String, Object> item : incomingMenuItems) {
                     String name = item.get("name") != null ? item.get("name").toString() : "";
-                    String shortCode = item.get("code") != null ? item.get("code").toString() : (name.length() >= 3 ? name.substring(0, 3).toUpperCase() : name.toUpperCase());
+                    String baseCode = item.get("code") != null && !item.get("code").toString().trim().isEmpty() 
+                        ? item.get("code").toString().trim().toUpperCase() 
+                        : (name.length() >= 3 ? name.substring(0, 3).toUpperCase().replaceAll("[^A-Z0-9]", "") : "ITM");
+                    if (baseCode.isEmpty()) baseCode = "ITM";
+                    
+                    String shortCode = baseCode;
+                    while (usedCodes.contains(shortCode)) {
+                        shortCode = baseCode + (codeCounter++);
+                    }
+                    usedCodes.add(shortCode);
+
                     double price = item.get("price") != null ? Double.parseDouble(item.get("price").toString()) : 0.0;
                     boolean veg = true;
                     if (item.get("veg") != null) {
@@ -199,7 +211,21 @@ public class ActivationApiController {
             gatewayPayload.put("modifierGroups", modifierGroups);
             gatewayPayload.put("waiters", mappedWaiters);
             
+            // Save payload to root and subfolder paths so MockCloudGatewayController always finds it
             mapper.writeValue(file, gatewayPayload);
+            try { mapper.writeValue(new java.io.File("core-heart/" + fileName), gatewayPayload); } catch (Exception ignored) {}
+            try { mapper.writeValue(new java.io.File("core-heart/core-heart/" + fileName), gatewayPayload); } catch (Exception ignored) {}
+            try { mapper.writeValue(new java.io.File("activation-data.json"), gatewayPayload); } catch (Exception ignored) {}
+            try { mapper.writeValue(new java.io.File("core-heart/activation-data.json"), gatewayPayload); } catch (Exception ignored) {}
+            try { mapper.writeValue(new java.io.File("core-heart/core-heart/activation-data.json"), gatewayPayload); } catch (Exception ignored) {}
+            
+            // Immediately sync payload directly into the active PostgreSQL database tables (menu_items, dining_tables, etc.)
+            try {
+                activationService.syncCloudConfiguration(gatewayPayload);
+                System.out.println("☁️ Live Sync: Web configuration successfully saved directly into PostgreSQL database.");
+            } catch (Exception e) {
+                System.err.println("⚠️ Notice: Direct DB sync: " + e.getMessage());
+            }
             
             return ResponseEntity.ok(Map.of("success", true, "code", syncCode));
         } catch (Exception e) {

@@ -443,6 +443,13 @@ public class UiDashboardController implements Initializable {
     // Keep a strong reference to prevent garbage collection of WebView bridge
     private final JavaMenuBridge javaMenuBridge = new JavaMenuBridge();
 
+    public UUID getActiveRestaurantId() {
+        return systemConfigRepository.findAll().stream()
+                .findFirst()
+                .map(com.smartdine.coreheart.SystemConfig::getRestaurantId)
+                .orElse(UUID.fromString("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"));
+    }
+
     // --- STATE VARIABLES ---
     private Timeline autoRefreshTimeline;
     private final java.util.concurrent.atomic.AtomicBoolean isRefreshing = new java.util.concurrent.atomic.AtomicBoolean(false);
@@ -4475,7 +4482,7 @@ public class UiDashboardController implements Initializable {
     }
 
     public void loadTablesToUi() {
-        UUID restaurantId = TenantContext.getRestaurantId();
+        UUID restaurantId = getActiveRestaurantId();
         CompletableFuture.runAsync(() -> {
             TenantContext.setRestaurantId(restaurantId);
             try {
@@ -7893,7 +7900,7 @@ public class UiDashboardController implements Initializable {
         sourceBtn.setText("⏳ Syncing...");
         sourceBtn.setDisable(true);
 
-        UUID restaurantId = TenantContext.getRestaurantId();
+        UUID restaurantId = getActiveRestaurantId();
         CompletableFuture.runAsync(() -> {
             TenantContext.setRestaurantId(restaurantId);
             try {

@@ -52,11 +52,40 @@ public class AuthService {
 
     // High-Speed PIN Login for Staff (Waiter/Kitchen/Biller)
     public AuthResponse authenticateWithPin(PinLoginRequest request) {
-        AppUser user = userRepository.findByPinAndRestaurantId(request.getPin(), request.getRestaurantId())
-                .orElseThrow(() -> new RuntimeException("Invalid PIN"));
+        java.util.Optional<AppUser> userOpt = userRepository.findByPinAndRestaurantId(request.getPin(), request.getRestaurantId());
+        if (!userOpt.isPresent()) {
+            userOpt = userRepository.findAll().stream()
+                    .filter(u -> request.getPin() != null && request.getPin().equals(u.getPin()))
+                    .findFirst();
+            
+            // Dynamically copy/link the waiter under the requested restaurant ID so they belong to it
+            if (userOpt.isPresent()) {
+                AppUser original = userOpt.get();
+                if (!original.getRestaurantId().equals(request.getRestaurantId())) {
+                    String newUsername = original.getUsername() + "_" + request.getRestaurantId().toString().substring(0, 8);
+                    java.util.Optional<AppUser> existing = userRepository.findByUsername(newUsername);
+                    if (existing.isPresent()) {
+                        userOpt = existing;
+                    } else {
+                        AppUser copy = new AppUser();
+                        copy.setRestaurantId(request.getRestaurantId());
+                        copy.setPin(original.getPin());
+                        copy.setUsername(newUsername);
+                        copy.setFullName(original.getFullName());
+                        copy.setRole(original.getRole());
+                        copy.setPassword(original.getPassword());
+                        copy.setActive(true);
+                        userRepository.save(copy);
+                        userOpt = java.util.Optional.of(copy);
+                        System.out.println("✅ AuthService: Dynamically provisioned waiter " + original.getFullName() + " for new restaurant ID: " + request.getRestaurantId());
+                    }
+                }
+            }
+        }
+        AppUser user = userOpt.orElseThrow(() -> new RuntimeException("Invalid PIN"));
 
-        String token = jwtUtil.generateToken(user.getUsername(), user.getRole().name(), user.getRestaurantId());
-        return new AuthResponse(token, user.getRole().name(), user.getRestaurantId(), user.getFullName());
+        String token = jwtUtil.generateToken(user.getUsername(), user.getRole().name(), request.getRestaurantId());
+        return new AuthResponse(token, user.getRole().name(), request.getRestaurantId(), user.getFullName());
     }
 
     public java.util.List<AppUser> getActiveWaiters(java.util.UUID restaurantId) {

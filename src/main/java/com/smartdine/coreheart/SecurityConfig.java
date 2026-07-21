@@ -55,7 +55,7 @@ public class SecurityConfig {
                     .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/auth/**", "/ws/**", "/error", "/api/mock-cloud/**", "/api/activation/**", "/api/public/provision/**", "/api/public/webhooks/**").permitAll() // Allow Login, WebSockets, mock cloud, activation, error, webhooks, and provisioning path
+                .requestMatchers("/auth/**", "/ws/**", "/error", "/api/mock-cloud/**", "/api/activation/**", "/api/public/provision/**", "/api/public/webhooks/**", "/api/sync/**").permitAll() // Allow Login, WebSockets, mock cloud, activation, error, webhooks, provisioning, and sync paths
                 
                 // Allow Waiters, Billers, and Admins to VIEW tables (GET) and update status (PATCH), but NOT create/edit them
                 .requestMatchers(HttpMethod.GET, "/api/admin/tables", "/api/admin/tables/**").hasAnyRole("WAITER", "BILLER", "ADMIN")
@@ -72,7 +72,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.PUT, "/api/admin/menu/items/*/todays-menu").hasAnyRole("BILLER", "ADMIN")
                 
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                .requestMatchers("/api/kitchen/**").hasAnyRole("KITCHEN", "ADMIN")
+                .requestMatchers("/api/kitchen/**").hasAnyRole("KITCHEN", "WAITER", "BILLER", "ADMIN")
                 .requestMatchers("/api/waiter/**").hasAnyRole("WAITER", "BILLER", "ADMIN")
                 .anyRequest().authenticated()
             )

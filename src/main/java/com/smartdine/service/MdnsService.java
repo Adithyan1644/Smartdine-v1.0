@@ -27,9 +27,13 @@ public class MdnsService {
         // Run network operation in virtual thread to avoid blocking main UI thread
         Thread.ofVirtual().start(() -> {
             try {
-                InetAddress localHost = InetAddress.getLocalHost();
+                InetAddress physicalIp = getPhysicalLocalIP();
+                if (physicalIp == null) {
+                    physicalIp = InetAddress.getLocalHost();
+                }
+
                 synchronized (this) {
-                    jmdns = JmDNS.create(localHost);
+                    jmdns = JmDNS.create(physicalIp);
                     
                     String serviceType = "_smartdine-pos._tcp.local.";
                     String serviceName = "smartdine-biller-" + restaurantId.toString().substring(0, 8);
@@ -45,11 +49,43 @@ public class MdnsService {
                     jmdns.registerService(serviceInfo);
                 }
                 System.out.println("📶 [mDNS] Broadcasting Biller service: _smartdine-pos._tcp.local. on " 
-                        + localHost.getHostAddress() + ":8080 (Restaurant: " + restaurantId + ")");
+                        + physicalIp.getHostAddress() + ":8080 (Restaurant: " + restaurantId + ")");
             } catch (IOException e) {
                 System.err.println("❌ [mDNS] Failed to register service: " + e.getMessage());
             }
         });
+    }
+
+    private InetAddress getPhysicalLocalIP() {
+        try {
+            java.util.Enumeration<java.net.NetworkInterface> interfaces = java.net.NetworkInterface.getNetworkInterfaces();
+            while (interfaces.hasMoreElements()) {
+                java.net.NetworkInterface iface = interfaces.nextElement();
+                
+                if (iface.isLoopback() || !iface.isUp() || iface.isVirtual()) continue;
+                
+                String displayName = iface.getDisplayName().toLowerCase();
+                if (displayName.contains("virtual") || displayName.contains("wsl") || 
+                    displayName.contains("docker") || displayName.contains("vbox") || 
+                    displayName.contains("vmware") || displayName.contains("vpn")) {
+                    continue;
+                }
+
+                java.util.Enumeration<InetAddress> addresses = iface.getInetAddresses();
+                while (addresses.hasMoreElements()) {
+                    InetAddress addr = addresses.nextElement();
+                    if (addr instanceof java.net.Inet4Address) {
+                        String ip = addr.getHostAddress();
+                        if (ip.startsWith("192.168.") || ip.startsWith("10.") || ip.startsWith("172.")) {
+                            return addr;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error scanning network cards for mDNS: " + e.getMessage());
+        }
+        return null;
     }
 
     /**

@@ -69,15 +69,19 @@ public class AuthController {
             @RequestParam(required = false) UUID restaurantId,
             @RequestParam(required = false) String syncCode) {
 
-        UUID resolvedId = restaurantId;
+        UUID resolvedId = null;
 
         // If the waiter app supplies a syncCode, resolve the restaurant UUID from it.
         // This is the canonical source of truth — eliminates UUID mismatch bugs.
-        if (resolvedId == null && syncCode != null && !syncCode.trim().isEmpty()) {
+        if (syncCode != null && !syncCode.trim().isEmpty()) {
             var restaurantOpt = restaurantRepository.findBySyncCodeAndIsDeletedFalse(syncCode.trim());
             if (restaurantOpt.isPresent()) {
                 resolvedId = restaurantOpt.get().getRestaurantId();
             }
+        }
+
+        if (resolvedId == null) {
+            resolvedId = restaurantId;
         }
 
         // Also try matching via the activation JSON file's restaurantId so that

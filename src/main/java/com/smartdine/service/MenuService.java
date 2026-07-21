@@ -22,6 +22,9 @@ public class MenuService {
     @Autowired
     private org.springframework.messaging.simp.SimpMessagingTemplate messagingTemplate;
 
+    @Autowired(required = false)
+    private com.smartdine.controller.TunnelWebSocketHandler tunnelWebSocketHandler;
+
     @Transactional
     public MenuItem saveItem(MenuItem item) {
         // 1. Assign Restaurant ID from Token
@@ -38,13 +41,18 @@ public class MenuService {
 
         MenuItem savedItem = menuRepository.save(item);
 
-        // Broadcast the update to all waiters/clients
+        // Broadcast the update to all waiters/clients locally
         try {
             String topic = "/topic/menu/" + savedItem.getRestaurantId().toString();
             messagingTemplate.convertAndSend(topic, savedItem);
             System.out.println("✅ Broadcasted menu item update: " + savedItem.getName() + " to topic " + topic);
         } catch (Exception e) {
             System.err.println("❌ Failed to broadcast menu item update: " + e.getMessage());
+        }
+
+        // Direction B: Push config update down Cloud Tunnel to local restaurant PC
+        if (tunnelWebSocketHandler != null) {
+            tunnelWebSocketHandler.sendConfigUpdate(savedItem.getRestaurantId(), "MENU_ITEM", savedItem);
         }
 
         return savedItem;
@@ -63,6 +71,11 @@ public class MenuService {
         } catch (Exception e) {
             System.err.println("❌ Failed to broadcast availability update: " + e.getMessage());
         }
+
+        if (tunnelWebSocketHandler != null) {
+            tunnelWebSocketHandler.sendConfigUpdate(saved.getRestaurantId(), "MENU_ITEM", saved);
+        }
+
         return saved;
     }
 
@@ -79,6 +92,11 @@ public class MenuService {
         } catch (Exception e) {
             System.err.println("❌ Failed to broadcast today's menu toggle: " + e.getMessage());
         }
+
+        if (tunnelWebSocketHandler != null) {
+            tunnelWebSocketHandler.sendConfigUpdate(saved.getRestaurantId(), "MENU_ITEM", saved);
+        }
+
         return saved;
     }
 }

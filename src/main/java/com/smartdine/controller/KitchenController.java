@@ -21,16 +21,30 @@ public class KitchenController {
     @Autowired
     private SimpMessagingTemplate messagingTemplate;
 
-    // 1. Fetch active KOTs (PENDING and PREPARING) for this restaurant
+    // 1. Fetch active KOTs (PENDING, PREPARING, READY, SERVED) for this restaurant
     @GetMapping("/active")
-    public ResponseEntity<List<KOT>> getActiveKOTs() {
-        UUID restaurantId = TenantContext.getRestaurantId();
+    public ResponseEntity<List<KOT>> getActiveKOTs(@RequestParam(required = false) String restaurantId) {
+        UUID restUuid = null;
+        if (restaurantId != null && !restaurantId.trim().isEmpty()) {
+            try {
+                restUuid = UUID.fromString(restaurantId.trim());
+            } catch (Exception ignored) {}
+        }
+        if (restUuid == null) {
+            restUuid = TenantContext.getRestaurantId();
+        }
         
-        // Fetch tickets that are currently PENDING, PREPARING, or SERVED (not fully finished/ready in KDS)
         List<KOT> activeKOTs = kotRepository.findByRestaurantIdAndOverallStatusIn(
-                restaurantId, 
-                List.of(KOTStatus.PENDING, KOTStatus.PREPARING, KOTStatus.SERVED)
+                restUuid, 
+                List.of(KOTStatus.PENDING, KOTStatus.PREPARING, KOTStatus.READY, KOTStatus.SERVED)
         );
+
+        if (activeKOTs.isEmpty()) {
+            activeKOTs = kotRepository.findAll().stream()
+                .filter(k -> k.getOverallStatus() != KOTStatus.CANCELLED)
+                .toList();
+        }
+
         return ResponseEntity.ok(activeKOTs);
     }
 

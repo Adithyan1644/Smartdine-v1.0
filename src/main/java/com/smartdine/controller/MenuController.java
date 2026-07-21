@@ -38,7 +38,11 @@ public class MenuController {
     @GetMapping("/categories")
     public List<Category> getCategories() {
         UUID restaurantId = TenantContext.getRestaurantId();
-        return categoryRepository.findByRestaurantId(restaurantId);
+        List<Category> categories = categoryRepository.findByRestaurantId(restaurantId);
+        if (categories == null || categories.isEmpty()) {
+            categories = categoryRepository.findAll().stream().filter(c -> !c.isDeleted()).collect(java.util.stream.Collectors.toList());
+        }
+        return categories;
     }
 
     // 2. Add a New Food Item
@@ -52,7 +56,11 @@ public class MenuController {
     @GetMapping("/items")
     public List<MenuItem> getMenu() {
         UUID restaurantId = TenantContext.getRestaurantId();
-        return menuRepository.findByRestaurantIdAndIsDeletedFalse(restaurantId);
+        List<MenuItem> items = menuRepository.findByRestaurantIdAndIsDeletedFalse(restaurantId);
+        if (items == null || items.isEmpty()) {
+            items = menuRepository.findAll().stream().filter(i -> !i.isDeleted()).collect(java.util.stream.Collectors.toList());
+        }
+        return items;
     }
 
     // 4. Toggle Availability (Stock Status)

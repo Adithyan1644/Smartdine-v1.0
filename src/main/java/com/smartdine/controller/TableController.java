@@ -36,19 +36,48 @@ public class TableController {
 
     @Autowired
     private SimpMessagingTemplate messagingTemplate;
- 
+
+    @Autowired(required = false)
+    private com.smartdine.service.CloudSyncService cloudSyncService;
+
+    @Autowired(required = false)
+    private TunnelWebSocketHandler tunnelWebSocketHandler;
+
     // 1. Setup a New Table (e.g., ACT1)
     @PostMapping
     public DiningTable createTable(@RequestBody DiningTable table) {
         table.setRestaurantId(TenantContext.getRestaurantId());
-        return tableRepository.save(table);
+        DiningTable savedTable = tableRepository.save(table);
+
+        // Tunnel config update to local PC if running on Cloud
+        if (tunnelWebSocketHandler != null) {
+            tunnelWebSocketHandler.sendConfigUpdate(savedTable.getRestaurantId(), "TABLE", savedTable);
+        }
+
+        return savedTable;
     }
  
     // 2. Get Live Table Status for the Biller Dashboard
     @GetMapping
     public List<DiningTable> getAllTables() {
         UUID restaurantId = TenantContext.getRestaurantId();
-        List<DiningTable> tables = tableRepository.findByRestaurantIdOrderByTableNumberAsc(restaurantId);
+        List<DiningTable> rawTables = tableRepository.findByRestaurantIdOrderByTableNumberAsc(restaurantId);
+        if (rawTables.isEmpty()) {
+            rawTables = tableRepository.findAll();
+        }
+
+        // Deduplicate tables by tableNumber / ID and exclude deleted tables
+        java.util.Map<String, DiningTable> uniqueMap = new java.util.LinkedHashMap<>();
+        for (DiningTable t : rawTables) {
+            if (t.isDeleted()) continue;
+            String key = t.getTableNumber() != null && !t.getTableNumber().trim().isEmpty() 
+                    ? t.getTableNumber().trim().toUpperCase() 
+                    : t.getId().toString();
+            if (!uniqueMap.containsKey(key)) {
+                uniqueMap.put(key, t);
+            }
+        }
+        List<DiningTable> tables = new java.util.ArrayList<>(uniqueMap.values());
         List<Order> activeOrders = orderRepository.findByRestaurantIdAndStatusNotIn(restaurantId, java.util.Arrays.asList(OrderStatus.PAID, OrderStatus.CANCELLED));
 
         for (DiningTable table : tables) {
@@ -136,6 +165,11 @@ public class TableController {
                     order.setStatus(OrderStatus.PAID);
                     order.setSettledAt(java.time.LocalDateTime.now());
                     orderRepository.save(order);
+
+                    // Direction A: Asynchronously archive settled bill to Cloud SQL
+                    if (cloudSyncService != null) {
+                        cloudSyncService.syncOrderToCloud(order);
+                    }
 
                     // Cascade settlement to other merged tables
                     if (order.getMergedTableIds() != null && !order.getMergedTableIds().trim().isEmpty()) {

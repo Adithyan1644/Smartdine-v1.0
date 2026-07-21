@@ -1,0 +1,7 @@
+# Tells Google Cloud to run a native, high-performance Java 21 runtime
+runtime: java21 
+instance_class: F1
+
+env_variables:
+  SPRING_PROFILES_ACTIVE: "prod"
+  SPRING_THREADS_VIRTUAL_ENABLED: "true"

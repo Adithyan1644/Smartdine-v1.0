@@ -28,6 +28,7 @@ public class TunnelWebSocketClient implements CommandLineRunner {
 
     @Autowired private MenuRepository menuRepository;
     @Autowired private TableRepository tableRepository;
+    @Autowired private CategoryRepository categoryRepository;
     
     @Autowired 
     private SimpMessagingTemplate localWebSocketTemplate; // Injected for local Wi-Fi broadcasts
@@ -87,6 +88,10 @@ public class TunnelWebSocketClient implements CommandLineRunner {
                                 
                                 // Refresh local JavaFX Floor Map & apps
                                 localWebSocketTemplate.convertAndSend("/topic/tables/" + restaurantId, Map.of("event", "TABLES_UPDATED"));
+                            } else if ("CATEGORY".equals(type)) {
+                                Category category = objectMapper.convertValue(data, Category.class);
+                                categoryRepository.save(category); // Save natively to Postgres
+                                localWebSocketTemplate.convertAndSend("/topic/menu/" + restaurantId, Map.of("event", "CATEGORY_UPDATED"));
                             }
                         } else if ("ONLINE_ORDER".equals(event)) {
                             System.out.println("📦 Local: Received Online Order Webhook via Cloud Tunnel!");
