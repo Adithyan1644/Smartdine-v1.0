@@ -95,10 +95,8 @@ public class AuthController {
             resolvedId = restaurantId;
         }
 
-        // Also try matching via the activation JSON file's restaurantId so that
-        // the biller-seeded waiters still appear if no restaurant record exists in DB.
         if (resolvedId == null) {
-            return ResponseEntity.badRequest().body(Map.of("error", "restaurantId or syncCode is required"));
+            resolvedId = com.smartdine.coreheart.TenantContext.getRestaurantId();
         }
 
         return ResponseEntity.ok(authService.getActiveWaiters(resolvedId));
