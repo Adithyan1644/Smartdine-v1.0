@@ -31,12 +31,14 @@ public class ActivationApiController {
     @GetMapping("/status")
     public ResponseEntity<?> getStatus() {
         boolean activated = activationService.isSystemActivated();
+        var configOpt = activationService.getSystemConfig();
         return ResponseEntity.ok(Map.of(
             "activated", activated,
-            "restaurantId", activationService.getSystemConfig().map(c -> c.getRestaurantId().toString()).orElse(""),
-            "restaurantName", activationService.getSystemConfig().map(c -> c.getRestaurantName()).orElse("")
+            "restaurantId", configOpt.map(c -> c.getRestaurantId().toString()).orElse(""),
+            "restaurantName", configOpt.map(c -> c.getRestaurantName()).orElse("SmartDine Restaurant")
         ));
     }
+
 
     @GetMapping("/activate")
     public ResponseEntity<?> activateViaGet(@RequestParam String code) {
