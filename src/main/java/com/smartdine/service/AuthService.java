@@ -90,7 +90,16 @@ public class AuthService {
     }
 
     public java.util.List<AppUser> getActiveWaiters(java.util.UUID restaurantId) {
-        return userRepository.findByRestaurantIdAndRoleAndIsActiveTrue(restaurantId, com.smartdine.coreheart.UserRole.WAITER);
+        java.util.List<AppUser> list = userRepository.findByRestaurantIdAndRoleAndIsActiveTrue(restaurantId, com.smartdine.coreheart.UserRole.WAITER);
+        java.util.List<AppUser> unique = new java.util.ArrayList<>();
+        java.util.Set<String> pins = new java.util.HashSet<>();
+        for (AppUser user : list) {
+            if (user.getPin() != null && !pins.contains(user.getPin())) {
+                pins.add(user.getPin());
+                unique.add(user);
+            }
+        }
+        return unique;
     }
 
     // Register a new waiter from the Admin Panel

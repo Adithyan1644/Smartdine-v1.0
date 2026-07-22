@@ -70,20 +70,8 @@ public class DataSeeder implements CommandLineRunner {
             System.out.println("✅ Admin seeded successfully.");
         }
 
-        // Seed Waiter Staff (matching Waiter App default PIN 4022)
-        if (userRepository.findByUsername("waiter").isEmpty()) {
-            AppUser waiter = new AppUser();
-            waiter.setRestaurantId(REST_ID);
-            waiter.setUsername("waiter");
-            waiter.setPassword(passwordEncoder.encode("waiter123"));
-            waiter.setRole(UserRole.WAITER);
-            waiter.setFullName("Arjun Mehta");
-            waiter.setPin("4022");
-            waiter.setActive(true);
-            waiter.setDeleted(false);
-            userRepository.save(waiter);
-            System.out.println("✅ Waiter seeded successfully.");
-        }
+        // Seeding of default Waiter staff has been disabled for professional live configuration.
+
 
         // Seed Kitchen Staff (matching KDS App default PIN 5050)
         if (userRepository.findByUsername("kitchen").isEmpty()) {
