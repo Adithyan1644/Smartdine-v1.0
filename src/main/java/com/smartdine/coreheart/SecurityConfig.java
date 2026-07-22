@@ -61,9 +61,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/admin/tables", "/api/admin/tables/**").hasAnyRole("WAITER", "BILLER", "ADMIN")
                 .requestMatchers(HttpMethod.PATCH, "/api/admin/tables/**").hasAnyRole("WAITER", "BILLER", "ADMIN")
                 
-                // 1. Allow Waiters, Billers, Chefs, and Admins to VIEW Menu Items
-                .requestMatchers(HttpMethod.GET, "/api/admin/menu/items").hasAnyRole("WAITER", "BILLER", "KITCHEN", "ADMIN")
-                .requestMatchers(HttpMethod.GET, "/api/admin/menu/modifier-groups/global").hasAnyRole("WAITER", "BILLER", "KITCHEN", "ADMIN")
+                // 1. Allow Waiters, Billers, Chefs, and Admins to VIEW Menu Items, Categories, and Modifiers
+                .requestMatchers(HttpMethod.GET, "/api/admin/menu/items", "/api/admin/menu/categories", "/api/admin/menu/modifier-groups/global").hasAnyRole("WAITER", "BILLER", "KITCHEN", "ADMIN")
                 
                 // 2. Allow active staff roles to toggle item AVAILABILITY (Out of Stock / 86-ing)
                 .requestMatchers(HttpMethod.PUT, "/api/admin/menu/items/*/availability").hasAnyRole("WAITER", "BILLER", "KITCHEN", "ADMIN")

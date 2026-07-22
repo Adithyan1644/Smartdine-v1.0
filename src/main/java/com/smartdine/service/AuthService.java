@@ -52,7 +52,8 @@ public class AuthService {
 
     // High-Speed PIN Login for Staff (Waiter/Kitchen/Biller)
     public AuthResponse authenticateWithPin(PinLoginRequest request) {
-        java.util.Optional<AppUser> userOpt = userRepository.findByPinAndRestaurantId(request.getPin(), request.getRestaurantId());
+        java.util.List<AppUser> users = userRepository.findByPinAndRestaurantId(request.getPin(), request.getRestaurantId());
+        java.util.Optional<AppUser> userOpt = users.isEmpty() ? java.util.Optional.empty() : java.util.Optional.of(users.get(0));
         if (!userOpt.isPresent()) {
             userOpt = userRepository.findAll().stream()
                     .filter(u -> request.getPin() != null && request.getPin().equals(u.getPin()))

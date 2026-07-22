@@ -15,7 +15,7 @@ public interface UserRepository extends JpaRepository<AppUser, UUID> {
     Optional<AppUser> findByUsername(String username);
 
     // For Staff login via PIN (Multi-tenant safe)
-    Optional<AppUser> findByPinAndRestaurantId(String pin, UUID restaurantId);
+    java.util.List<AppUser> findByPinAndRestaurantId(String pin, UUID restaurantId);
 
     // Fetch active staff list for client applications
     java.util.List<AppUser> findByRestaurantIdAndRoleAndIsActiveTrue(UUID restaurantId, com.smartdine.coreheart.UserRole role);
