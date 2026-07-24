@@ -29,7 +29,7 @@
                         <Label text="Cooking or awaiting prep" style="-fx-font-size: 11px; -fx-text-fill: #64748B;" />
                      </children>
                   </VBox>
-                  <StackPane prefHeight="46.0" prefWidth="46.0" style="-fx-background-color: #eff6ff; -fx-background-radius: 23px;">
+                  <StackPane styleClass="kds-stat-icon-container" style="-fx-background-color: #eff6ff;">
                      <children>
                         <SVGPath content="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" fill="transparent" stroke="#2563EB" strokeWidth="2.0" strokeLineCap="ROUND" strokeLineJoin="ROUND" scaleX="1.1" scaleY="1.1" />
                      </children>
@@ -52,7 +52,7 @@
                         <Label text="Target: 15 mins" style="-fx-font-size: 11px; -fx-text-fill: #64748B;" />
                      </children>
                   </VBox>
-                  <StackPane prefHeight="46.0" prefWidth="46.0" style="-fx-background-color: #f0fdf4; -fx-background-radius: 23px;">
+                  <StackPane styleClass="kds-stat-icon-container" style="-fx-background-color: #f0fdf4;">
                      <children>
                         <SVGPath content="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" fill="transparent" stroke="#0B2B26" strokeWidth="2.0" strokeLineCap="ROUND" strokeLineJoin="ROUND" scaleX="1.1" scaleY="1.1" />
                      </children>
@@ -70,7 +70,7 @@
                         <Label text="Ready to serve" style="-fx-font-size: 11px; -fx-text-fill: #64748B;" />
                      </children>
                   </VBox>
-                  <StackPane prefHeight="46.0" prefWidth="46.0" style="-fx-background-color: #f0fdf4; -fx-background-radius: 23px;">
+                  <StackPane styleClass="kds-stat-icon-container" style="-fx-background-color: #f0fdf4;">
                      <children>
                         <SVGPath content="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" fill="transparent" stroke="#10B981" strokeWidth="2.0" strokeLineCap="ROUND" strokeLineJoin="ROUND" scaleX="1.1" scaleY="1.1" />
                      </children>
@@ -88,7 +88,7 @@
                         <Label text="Exceeded 10m mark" style="-fx-font-size: 11px; -fx-text-fill: #64748B;" />
                      </children>
                   </VBox>
-                  <StackPane prefHeight="46.0" prefWidth="46.0" style="-fx-background-color: #fee2e2; -fx-background-radius: 23px;">
+                  <StackPane styleClass="kds-stat-icon-container" style="-fx-background-color: #fee2e2;">
                      <children>
                         <SVGPath content="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" fill="transparent" stroke="#EF4444" strokeWidth="2.0" strokeLineCap="ROUND" strokeLineJoin="ROUND" scaleX="1.1" scaleY="1.1" />
                      </children>
@@ -106,7 +106,7 @@
                         <Label text="Served kitchen orders" style="-fx-font-size: 11px; -fx-text-fill: #64748B;" />
                      </children>
                   </VBox>
-                  <StackPane prefHeight="46.0" prefWidth="46.0" style="-fx-background-color: #f5f3ff; -fx-background-radius: 23px;">
+                  <StackPane styleClass="kds-stat-icon-container" style="-fx-background-color: #f5f3ff;">
                      <children>
                         <SVGPath content="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" fill="transparent" stroke="#7C3AED" strokeWidth="2.0" strokeLineCap="ROUND" strokeLineJoin="ROUND" scaleX="1.1" scaleY="1.1" />
                      </children>

@@ -38,11 +38,21 @@ public class MenuController {
     @GetMapping("/categories")
     public List<Category> getCategories() {
         UUID restaurantId = TenantContext.getRestaurantId();
-        List<Category> categories = categoryRepository.findByRestaurantId(restaurantId);
-        if (categories == null || categories.isEmpty()) {
-            categories = categoryRepository.findAll().stream().filter(c -> !c.isDeleted()).collect(java.util.stream.Collectors.toList());
+        List<Category> rawCategories = categoryRepository.findByRestaurantId(restaurantId);
+        if (rawCategories == null) {
+            return java.util.Collections.emptyList();
         }
-        return categories;
+        
+        // Deduplicate categories by normalized category name and exclude deleted categories
+        java.util.Map<String, Category> uniqueMap = new java.util.LinkedHashMap<>();
+        for (Category c : rawCategories) {
+            if (c.isDeleted()) continue;
+            String key = c.getName() != null ? c.getName().trim().toLowerCase() : c.getId().toString();
+            if (!uniqueMap.containsKey(key)) {
+                uniqueMap.put(key, c);
+            }
+        }
+        return new java.util.ArrayList<>(uniqueMap.values());
     }
 
     // 2. Add a New Food Item
@@ -56,11 +66,22 @@ public class MenuController {
     @GetMapping("/items")
     public List<MenuItem> getMenu() {
         UUID restaurantId = TenantContext.getRestaurantId();
-        List<MenuItem> items = menuRepository.findByRestaurantIdAndIsDeletedFalse(restaurantId);
-        if (items == null || items.isEmpty()) {
-            items = menuRepository.findAll().stream().filter(i -> !i.isDeleted()).collect(java.util.stream.Collectors.toList());
+        List<MenuItem> rawItems = menuRepository.findByRestaurantIdAndIsDeletedFalse(restaurantId);
+        if (rawItems == null) {
+            return java.util.Collections.emptyList();
         }
-        return items;
+
+        // Deduplicate menu items by normalized item name / shortCode to prevent UI duplication
+        java.util.Map<String, MenuItem> uniqueMap = new java.util.LinkedHashMap<>();
+        for (MenuItem item : rawItems) {
+            if (item.isDeleted()) continue;
+            String key = (item.getName() != null ? item.getName().trim().toLowerCase() : "") + 
+                         "_" + (item.getShortCode() != null ? item.getShortCode().trim().toUpperCase() : item.getId().toString());
+            if (!uniqueMap.containsKey(key)) {
+                uniqueMap.put(key, item);
+            }
+        }
+        return new java.util.ArrayList<>(uniqueMap.values());
     }
 
     // 4. Toggle Availability (Stock Status)

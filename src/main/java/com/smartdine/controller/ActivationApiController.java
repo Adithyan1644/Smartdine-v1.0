@@ -8,6 +8,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/activation")
+@CrossOrigin(origins = "*")
 public class ActivationApiController {
 
     @Autowired
@@ -24,6 +25,12 @@ public class ActivationApiController {
 
     @Autowired
     private com.smartdine.repository.MenuRepository menuRepository;
+
+    @Autowired
+    private com.smartdine.repository.AddonItemRepository addonItemRepository;
+
+    @Autowired
+    private com.smartdine.repository.SystemConfigRepository systemConfigRepository;
 
     @Autowired
     private ProvisioningController provisioningController;
@@ -43,6 +50,48 @@ public class ActivationApiController {
     @GetMapping("/activate")
     public ResponseEntity<?> activateViaGet(@RequestParam String code) {
         return provisioningController.activate(code);
+    }
+
+    @GetMapping("/check-availability")
+    public ResponseEntity<?> checkAvailability(
+            @RequestParam(required = false) String restaurantName,
+            @RequestParam(required = false) String phone,
+            @RequestParam(required = false) String email) {
+
+        String cleanedName = (restaurantName != null) ? restaurantName.trim().toLowerCase() : "";
+        String cleanedPhone = (phone != null) ? phone.replaceAll("\\D", "") : "";
+        String cleanedEmail = (email != null) ? email.trim().toLowerCase() : "";
+
+        java.io.File dir = new java.io.File(".");
+        java.io.File[] files = dir.listFiles((d, name) -> name.startsWith("activation-") && name.endsWith(".json"));
+        if (files == null || files.length == 0) {
+            dir = new java.io.File("core-heart/core-heart");
+            files = dir.listFiles((d, name) -> name.startsWith("activation-") && name.endsWith(".json"));
+        }
+
+        if (files != null) {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            for (java.io.File file : files) {
+                try {
+                    Map map = mapper.readValue(file, Map.class);
+                    String rName = map.get("restaurantName") != null ? map.get("restaurantName").toString().trim().toLowerCase() : "";
+                    String rPhone = map.get("ownerPhone") != null ? map.get("ownerPhone").toString().replaceAll("\\D", "") : "";
+                    String rEmail = map.get("ownerEmail") != null ? map.get("ownerEmail").toString().trim().toLowerCase() : "";
+
+                    if (!cleanedName.isEmpty() && rName.equals(cleanedName)) {
+                        return ResponseEntity.ok(Map.of("available", false, "reason", "Restaurant Name '" + restaurantName + "' is already registered. Please choose a different restaurant name."));
+                    }
+                    if (!cleanedPhone.isEmpty() && !rPhone.isEmpty() && rPhone.contains(cleanedPhone)) {
+                        return ResponseEntity.ok(Map.of("available", false, "reason", "Mobile Number '" + phone + "' is already registered. Please use a different mobile number."));
+                    }
+                    if (!cleanedEmail.isEmpty() && !rEmail.isEmpty() && rEmail.equals(cleanedEmail)) {
+                        return ResponseEntity.ok(Map.of("available", false, "reason", "Email address '" + email + "' is already registered. Please sign in instead."));
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+
+        return ResponseEntity.ok(Map.of("available", true));
     }
 
     @PostMapping("/activate")
@@ -76,8 +125,16 @@ public class ActivationApiController {
     @PostMapping("/save-config")
     public ResponseEntity<?> saveConfig(@RequestBody Map<String, Object> request) {
         try {
-            String syncCode = request.get("syncCode") != null ? request.get("syncCode").toString() : ("SD-" + (100000 + (int)(Math.random() * 900000)));
-            String restId = request.get("restaurantId") != null ? request.get("restaurantId").toString() : java.util.UUID.randomUUID().toString();
+            String syncCode = request.get("syncCode") != null ? request.get("syncCode").toString() : "SD-612376";
+            String restId = request.get("restaurantId") != null ? request.get("restaurantId").toString() : null;
+            if (restId == null || restId.isEmpty()) {
+                restId = restaurantRepository.findBySyncCodeAndIsDeletedFalse(syncCode.trim())
+                    .map(r -> r.getRestaurantId().toString())
+                    .orElseGet(() -> systemConfigRepository.findAll().stream()
+                        .findFirst()
+                        .map(c -> c.getRestaurantId().toString())
+                        .orElse("9183522f-e62b-4cdc-b852-cac4b347cbc8"));
+            }
             
             String restName = request.get("restaurantName") != null ? request.get("restaurantName").toString() : null;
             if (restName == null && request.get("profile") instanceof Map) {
@@ -179,23 +236,39 @@ public class ActivationApiController {
                 }
             }
             
+            java.util.List<Map<String, Object>> incomingAddons = (java.util.List<Map<String, Object>>) request.get("addons");
+            java.util.List<Map<String, Object>> modifierOptions = new java.util.ArrayList<>();
+
+            if (incomingAddons != null && !incomingAddons.isEmpty()) {
+                for (Map<String, Object> addonMap : incomingAddons) {
+                    if (addonMap.get("name") != null) {
+                        double price = addonMap.get("price") != null ? Double.parseDouble(addonMap.get("price").toString()) : 0.0;
+                        modifierOptions.add(Map.of(
+                            "name", addonMap.get("name").toString().trim(),
+                            "price", price
+                        ));
+                    }
+                }
+            } else {
+                try {
+                    java.util.UUID rUuid = java.util.UUID.fromString(restId);
+                    java.util.List<com.smartdine.coreheart.AddonItem> liveAddons = addonItemRepository.findByRestaurantId(rUuid);
+                    for (com.smartdine.coreheart.AddonItem ai : liveAddons) {
+                        if (ai.isAvailable() && ai.getName() != null) {
+                            modifierOptions.add(Map.of(
+                                "name", ai.getName().trim(),
+                                "price", ai.getPrice() != null ? ai.getPrice().doubleValue() : 0.0
+                            ));
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+
             java.util.List<Map<String, Object>> modifierGroups = java.util.List.of(
                 Map.of(
-                    "name", "Global Drinks",
+                    "name", "Global Addons & Extras",
                     "isGlobal", true,
-                    "options", java.util.List.of(
-                        Map.of("name", "Water 500ml", "price", 10.0),
-                        Map.of("name", "Water 1L", "price", 20.0),
-                        Map.of("name", "Cold Drink", "price", 20.0)
-                    )
-                ),
-                Map.of(
-                    "name", "Global Sides & Sauces",
-                    "isGlobal", true,
-                    "options", java.util.List.of(
-                        Map.of("name", "Mayonnaise", "price", 15.0),
-                        Map.of("name", "Tomato Ketchup", "price", 0.0)
-                    )
+                    "options", modifierOptions
                 )
             );
             
@@ -204,9 +277,14 @@ public class ActivationApiController {
             gatewayPayload.put("restaurantName", restName);
             gatewayPayload.put("ownerName", ownerName);
             gatewayPayload.put("ownerEmail", ownerEmail);
-            gatewayPayload.put("cgstRate", new java.math.BigDecimal("2.50"));
-            gatewayPayload.put("sgstRate", new java.math.BigDecimal("2.50"));
+            gatewayPayload.put("cgstRate", request.get("cgstRate") != null ? new java.math.BigDecimal(request.get("cgstRate").toString()) : new java.math.BigDecimal("2.50"));
+            gatewayPayload.put("sgstRate", request.get("sgstRate") != null ? new java.math.BigDecimal(request.get("sgstRate").toString()) : new java.math.BigDecimal("2.50"));
             gatewayPayload.put("serviceChargeRate", new java.math.BigDecimal("5.00"));
+            gatewayPayload.put("taxEnabled", request.get("taxEnabled") != null ? request.get("taxEnabled") : true);
+            gatewayPayload.put("deliveryChargeEnabled", request.get("deliveryChargeEnabled") != null ? request.get("deliveryChargeEnabled") : false);
+            gatewayPayload.put("defaultDeliveryFee", request.get("defaultDeliveryFee") != null ? Double.parseDouble(request.get("defaultDeliveryFee").toString()) : 0.0);
+            gatewayPayload.put("packingChargeEnabled", request.get("packingChargeEnabled") != null ? request.get("packingChargeEnabled") : false);
+            gatewayPayload.put("defaultPackingFee", request.get("defaultPackingFee") != null ? Double.parseDouble(request.get("defaultPackingFee").toString()) : 0.0);
             gatewayPayload.put("categories", new java.util.ArrayList<>(categories));
             gatewayPayload.put("tables", mappedTables);
             gatewayPayload.put("menuItems", mappedMenuItems);

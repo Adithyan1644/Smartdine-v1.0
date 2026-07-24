@@ -15,7 +15,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/auth")
+@RequestMapping({"/auth", "/api/auth"})
 public class AuthController {
 
     @Autowired
@@ -78,7 +78,8 @@ public class AuthController {
     @GetMapping("/waiters")
     public ResponseEntity<?> getWaiters(
             @RequestParam(required = false) UUID restaurantId,
-            @RequestParam(required = false) String syncCode) {
+            @RequestParam(required = false) String syncCode,
+            @RequestParam(required = false, defaultValue = "true") boolean activeOnly) {
 
         UUID resolvedId = null;
 
@@ -99,7 +100,7 @@ public class AuthController {
             resolvedId = com.smartdine.coreheart.TenantContext.getRestaurantId();
         }
 
-        return ResponseEntity.ok(authService.getActiveWaiters(resolvedId));
+        return ResponseEntity.ok(authService.getWaiters(resolvedId, activeOnly));
     }
 
     @PostMapping("/register-waiter")

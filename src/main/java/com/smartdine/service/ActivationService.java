@@ -35,6 +35,12 @@ public class ActivationService {
     private ModifierGroupRepository modifierGroupRepository;
 
     @Autowired
+    private com.smartdine.repository.AddonItemRepository addonItemRepository;
+
+    @Autowired
+    private com.smartdine.repository.RestaurantSettingsRepository restaurantSettingsRepository;
+
+    @Autowired
     private OrderRepository orderRepository;
 
     @Autowired
@@ -61,6 +67,7 @@ public class ActivationService {
             systemConfigRepository.findAll().stream().findFirst().ifPresent(config -> {
                 TenantContext.setActiveRestaurantId(config.getRestaurantId());
                 System.out.println("🚀 [ActivationService] Initialized active restaurant tenant ID: " + config.getRestaurantId());
+                cleanupDuplicateData(config.getRestaurantId());
             });
         } catch (Exception e) {
             System.err.println("⚠️ [ActivationService] Failed to initialize active tenant: " + e.getMessage());
@@ -374,7 +381,15 @@ public class ActivationService {
     @Transactional
     public void syncCloudConfiguration(Map<String, Object> config) {
         if (config == null || !config.containsKey("restaurantId")) return;
-        UUID restaurantId = UUID.fromString((String) config.get("restaurantId"));
+        
+        UUID currentRid = TenantContext.getRestaurantId();
+        if (currentRid == null) {
+            currentRid = systemConfigRepository.findAll().stream()
+                .findFirst()
+                .map(SystemConfig::getRestaurantId)
+                .orElse(null);
+        }
+        UUID restaurantId = currentRid != null ? currentRid : UUID.fromString((String) config.get("restaurantId"));
         TenantContext.setRestaurantId(restaurantId);
 
         try {
@@ -437,25 +452,25 @@ public class ActivationService {
             // 3. Sync Menu Items
             List<Map<String, Object>> itemsList = (List<Map<String, Object>>) config.get("menuItems");
             if (itemsList != null) {
-                List<MenuItem> existingItems = menuRepository.findByRestaurantId(restaurantId);
+                List<MenuItem> allDbItems = menuRepository.findAll();
                 Set<String> incomingCodes = new HashSet<>();
                 Set<String> incomingNames = new HashSet<>();
                 
                 for (Map<String, Object> itm : itemsList) {
-                    String name = (String) itm.get("name");
+                    String name = itm.get("name") != null ? itm.get("name").toString().trim() : "";
                     String code = (String) itm.get("shortCode");
                     if (code == null || code.trim().isEmpty()) {
                         code = (name != null && name.length() >= 3) ? name.substring(0, 3).toUpperCase() : "ITM" + (int)(Math.random() * 1000);
                     }
-                    final String finalCode = code.trim();
-                    final String finalName = name != null ? name.trim() : "";
+                    final String finalCode = code.trim().toUpperCase();
+                    final String finalName = name;
 
                     if (!finalCode.isEmpty()) incomingCodes.add(finalCode);
                     if (!finalName.isEmpty()) incomingNames.add(finalName.toLowerCase());
                     
-                    MenuItem item = existingItems.stream()
-                        .filter(i -> (i.getShortCode() != null && i.getShortCode().equalsIgnoreCase(finalCode)) ||
-                                     (i.getName() != null && i.getName().equalsIgnoreCase(finalName)))
+                    MenuItem item = allDbItems.stream()
+                        .filter(i -> (i.getShortCode() != null && i.getShortCode().trim().equalsIgnoreCase(finalCode)) ||
+                                     (i.getName() != null && i.getName().trim().equalsIgnoreCase(finalName)))
                         .findFirst()
                         .orElse(null);
                         
@@ -471,7 +486,11 @@ public class ActivationService {
                         item.setPrice(new BigDecimal(itm.get("price").toString()));
                     }
                     if (itm.get("veg") != null) {
-                        item.setVeg(Boolean.parseBoolean(itm.get("veg").toString()));
+                        if (itm.get("veg") instanceof Boolean) {
+                            item.setVeg((Boolean) itm.get("veg"));
+                        } else {
+                            item.setVeg(Boolean.parseBoolean(itm.get("veg").toString()));
+                        }
                     }
                     
                     String catName = (String) itm.get("categoryName");
@@ -481,17 +500,57 @@ public class ActivationService {
                     item.setDeleted(false);
                     menuRepository.save(item);
                 }
+                menuRepository.flush();
                 
-                // Soft-delete items no longer present in incoming payload
-                for (MenuItem ext : existingItems) {
-                    boolean codeIn = ext.getShortCode() != null && incomingCodes.contains(ext.getShortCode());
-                    boolean nameIn = ext.getName() != null && incomingNames.contains(ext.getName().toLowerCase());
+                // Delete / Soft-delete items no longer present in incoming cloud payload
+                for (MenuItem ext : allDbItems) {
+                    if (ext.getName() != null && ext.getName().startsWith("↳ ")) continue;
+
+                    String extCode = ext.getShortCode() != null ? ext.getShortCode().trim().toUpperCase() : "";
+                    String extName = ext.getName() != null ? ext.getName().trim().toLowerCase() : "";
+
+                    boolean codeIn = !extCode.isEmpty() && incomingCodes.contains(extCode);
+                    boolean nameIn = !extName.isEmpty() && incomingNames.contains(extName);
                     if (!codeIn && !nameIn) {
                         ext.setDeleted(true);
+                        ext.setAvailable(false);
                         menuRepository.save(ext);
                     }
                 }
+                menuRepository.flush();
             }
+
+            // 3b. Sync Addon Items (AddonItemRepository)
+            List<Map<String, Object>> incomingGroups = (List<Map<String, Object>>) config.get("modifierGroups");
+            Set<String> incomingAddonNames = new HashSet<>();
+            if (incomingGroups != null) {
+                for (Map<String, Object> grp : incomingGroups) {
+                    List<Map<String, Object>> optionsList = (List<Map<String, Object>>) grp.get("options");
+                    if (optionsList != null) {
+                        for (Map<String, Object> optMap : optionsList) {
+                            if (optMap.get("name") != null) {
+                                String optName = optMap.get("name").toString().trim();
+                                if (!optName.isEmpty()) {
+                                    incomingAddonNames.add(optName.toLowerCase());
+                                    
+                                    BigDecimal optPrice = optMap.get("price") != null ? new BigDecimal(optMap.get("price").toString()) : BigDecimal.ZERO;
+                                    com.smartdine.coreheart.AddonItem existing = addonItemRepository.findByRestaurantId(restaurantId).stream()
+                                        .filter(a -> a.getName() != null && a.getName().trim().equalsIgnoreCase(optName))
+                                        .findFirst()
+                                        .orElse(null);
+                                    if (existing == null) {
+                                        existing = new com.smartdine.coreheart.AddonItem(restaurantId, optName, optPrice);
+                                    }
+                                    existing.setPrice(optPrice);
+                                    existing.setAvailable(true);
+                                    addonItemRepository.save(existing);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            addonItemRepository.flush();
 
             // 4. Sync Waiters
             List<Map<String, Object>> waitersList = (List<Map<String, Object>>) config.get("waiters");
@@ -541,6 +600,60 @@ public class ActivationService {
     }
 
     /**
+     * Persists all live AddonItem records for the restaurant into local activation JSON disk files.
+     */
+    @Transactional
+    public void syncAddonsToDisk(UUID restaurantId) {
+        if (restaurantId == null) return;
+        try {
+            List<com.smartdine.coreheart.AddonItem> addons = addonItemRepository.findByRestaurantId(restaurantId);
+            List<Map<String, Object>> options = new ArrayList<>();
+            for (com.smartdine.coreheart.AddonItem ai : addons) {
+                if (ai.isAvailable() && ai.getName() != null) {
+                    options.add(Map.of(
+                        "name", ai.getName().trim(),
+                        "price", ai.getPrice() != null ? ai.getPrice().doubleValue() : 0.0
+                    ));
+                }
+            }
+            List<Map<String, Object>> modifierGroups = List.of(
+                Map.of(
+                    "name", "Global Addons & Extras",
+                    "isGlobal", true,
+                    "options", options
+                )
+            );
+
+            SystemConfig config = systemConfigRepository.findAll().stream().findFirst().orElse(null);
+            String syncCode = config != null && config.getActivationCode() != null ? config.getActivationCode().trim().toLowerCase() : "sd-612376";
+            if (!syncCode.startsWith("sd-")) syncCode = "sd-" + syncCode;
+
+            String[] filenames = new String[]{
+                "activation-" + syncCode + ".json",
+                "core-heart/activation-" + syncCode + ".json",
+                "core-heart/core-heart/activation-" + syncCode + ".json",
+                "activation-data.json",
+                "core-heart/activation-data.json",
+                "core-heart/core-heart/activation-data.json"
+            };
+
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            for (String fname : filenames) {
+                java.io.File file = new java.io.File(fname);
+                if (file.exists()) {
+                    try {
+                        Map<String, Object> payload = mapper.readValue(file, Map.class);
+                        payload.put("modifierGroups", modifierGroups);
+                        mapper.writeValue(file, payload);
+                    } catch (Exception ignored) {}
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("⚠️ [ActivationService] Error syncing addons to disk: " + e.getMessage());
+        }
+    }
+
+    /**
      * Finishes local setup by registering the Manager admin user.
      */
     @Transactional
@@ -566,6 +679,91 @@ public class ActivationService {
 
         } finally {
             TenantContext.clear();
+        }
+    }
+
+    /**
+     * Deduplicates tables, categories, and menu items in the database for the active tenant.
+     */
+    @Transactional
+    public void cleanupDuplicateData(UUID restaurantId) {
+        if (restaurantId == null) return;
+        try {
+            // 1. Cleanup duplicate tables
+            List<DiningTable> tables = tableRepository.findByRestaurantId(restaurantId);
+            Map<String, DiningTable> seenTables = new HashMap<>();
+            List<DiningTable> duplicateTables = new ArrayList<>();
+            for (DiningTable table : tables) {
+                if (table.getTableNumber() == null || table.getTableNumber().trim().isEmpty()) continue;
+                String key = table.getTableNumber().trim().toUpperCase();
+                if (seenTables.containsKey(key)) {
+                    duplicateTables.add(table);
+                } else {
+                    seenTables.put(key, table);
+                }
+            }
+            if (!duplicateTables.isEmpty()) {
+                for (DiningTable dup : duplicateTables) {
+                    try {
+                        tableRepository.delete(dup);
+                    } catch (Exception e) {
+                        dup.setDeleted(true);
+                        tableRepository.save(dup);
+                    }
+                }
+                tableRepository.flush();
+                System.out.println("🧹 [ActivationService] Cleaned up " + duplicateTables.size() + " duplicate table records.");
+            }
+
+            // 2. Cleanup duplicate categories
+            List<Category> categories = categoryRepository.findByRestaurantId(restaurantId);
+            Map<String, Category> seenCategories = new HashMap<>();
+            List<Category> duplicateCategories = new ArrayList<>();
+            for (Category cat : categories) {
+                if (cat.getName() == null || cat.getName().trim().isEmpty()) continue;
+                String key = cat.getName().trim().toLowerCase();
+                if (seenCategories.containsKey(key)) {
+                    duplicateCategories.add(cat);
+                } else {
+                    seenCategories.put(key, cat);
+                }
+            }
+            if (!duplicateCategories.isEmpty()) {
+                for (Category dup : duplicateCategories) {
+                    try {
+                        categoryRepository.delete(dup);
+                    } catch (Exception e) {
+                        dup.setDeleted(true);
+                        categoryRepository.save(dup);
+                    }
+                }
+                categoryRepository.flush();
+                System.out.println("🧹 [ActivationService] Cleaned up " + duplicateCategories.size() + " duplicate category records.");
+            }
+
+            // 3. Cleanup duplicate menu items
+            List<MenuItem> menuItems = menuRepository.findByRestaurantId(restaurantId);
+            Map<String, MenuItem> seenMenuItems = new HashMap<>();
+            List<MenuItem> duplicateMenuItems = new ArrayList<>();
+            for (MenuItem item : menuItems) {
+                if (item.getName() == null || item.getName().trim().isEmpty()) continue;
+                String key = item.getName().trim().toLowerCase();
+                if (seenMenuItems.containsKey(key)) {
+                    duplicateMenuItems.add(item);
+                } else {
+                    seenMenuItems.put(key, item);
+                }
+            }
+            if (!duplicateMenuItems.isEmpty()) {
+                for (MenuItem dup : duplicateMenuItems) {
+                    dup.setDeleted(true);
+                    menuRepository.save(dup);
+                }
+                menuRepository.flush();
+                System.out.println("🧹 [ActivationService] Cleaned up " + duplicateMenuItems.size() + " duplicate menu item records.");
+            }
+        } catch (Exception e) {
+            System.err.println("⚠️ [ActivationService] Error during duplicate cleanup: " + e.getMessage());
         }
     }
 }

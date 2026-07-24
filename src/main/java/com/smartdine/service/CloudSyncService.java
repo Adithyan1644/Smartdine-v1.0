@@ -15,9 +15,12 @@ import java.io.File;
 import java.util.*;
 
 /**
- * Direction A: Local-to-Cloud Sync (Asynchronous Sales Archiving & Auto-Recovery)
- * Automatically archives settled sales from the local Billing PC to Google Cloud SQL.
- * Includes local offline disk caching and auto-recovery bulk upload when internet returns.
+ * Direction A: Local-to-Cloud Sync (Asynchronous Sales Archiving &
+ * Auto-Recovery)
+ * Automatically archives settled sales from the local Billing PC to Google
+ * Cloud SQL.
+ * Includes local offline disk caching and auto-recovery bulk upload when
+ * internet returns.
  */
 @Service
 @Profile("!prod") // Active on local restaurant Billing PC
@@ -36,7 +39,8 @@ public class CloudSyncService {
      */
     @Async
     public void syncOrderToCloud(Order order) {
-        if (order == null) return;
+        if (order == null)
+            return;
 
         Map<String, Object> payload = buildOrderPayload(order);
 
@@ -49,18 +53,21 @@ public class CloudSyncService {
             ResponseEntity<String> response = restTemplate.postForEntity(CLOUD_SYNC_URL, entity, String.class);
 
             if (response.getStatusCode().is2xxSuccessful()) {
-                System.out.println("☁️ Cloud Sync: Archived settled bill " + order.getOrderNumber() + " to Google Cloud SQL.");
+                System.out.println(
+                        "☁️ Cloud Sync: Archived settled bill " + order.getOrderNumber() + " to Google Cloud SQL.");
             } else {
                 saveToOfflineQueue(payload);
             }
         } catch (Exception e) {
-            System.err.println("⚠️ Local: Internet connection offline (" + e.getMessage() + "). Archived bill " + order.getOrderNumber() + " locally for auto cloud push.");
+            System.err.println("⚠️ Local: Internet connection offline (" + e.getMessage() + "). Archived bill "
+                    + order.getOrderNumber() + " locally for auto cloud push.");
             saveToOfflineQueue(payload);
         }
     }
 
     /**
-     * Periodically flushes offline queued bills to Google Cloud SQL when internet connectivity returns.
+     * Periodically flushes offline queued bills to Google Cloud SQL when internet
+     * connectivity returns.
      */
     @Scheduled(fixedDelay = 30000)
     public synchronized void flushOfflineQueue() {
@@ -69,8 +76,11 @@ public class CloudSyncService {
         }
 
         try {
-            List<Map<String, Object>> queuedOrders = objectMapper.readValue(offlineQueueFile, new TypeReference<List<Map<String, Object>>>() {});
-            if (queuedOrders.isEmpty()) return;
+            List<Map<String, Object>> queuedOrders = objectMapper.readValue(offlineQueueFile,
+                    new TypeReference<List<Map<String, Object>>>() {
+                    });
+            if (queuedOrders.isEmpty())
+                return;
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -79,12 +89,14 @@ public class CloudSyncService {
             ResponseEntity<String> response = restTemplate.postForEntity(CLOUD_BULK_SYNC_URL, entity, String.class);
 
             if (response.getStatusCode().is2xxSuccessful()) {
-                System.out.println("🚀 Local: Internet restored! Bulk uploaded " + queuedOrders.size() + " offline sales to Google Cloud SQL.");
+                System.out.println("🚀 Local: Internet restored! Bulk uploaded " + queuedOrders.size()
+                        + " offline sales to Google Cloud SQL.");
                 // Clear queue file
                 objectMapper.writeValue(offlineQueueFile, Collections.emptyList());
             }
         } catch (Exception e) {
-            // Internet is still offline or server unreachable — keep retry silent until restored
+            // Internet is still offline or server unreachable — keep retry silent until
+            // restored
         }
     }
 
@@ -93,8 +105,10 @@ public class CloudSyncService {
             List<Map<String, Object>> queue = new ArrayList<>();
             if (offlineQueueFile.exists() && offlineQueueFile.length() > 0) {
                 try {
-                    queue = objectMapper.readValue(offlineQueueFile, new TypeReference<List<Map<String, Object>>>() {});
-                } catch (Exception ignored) {}
+                    queue = objectMapper.readValue(offlineQueueFile, new TypeReference<List<Map<String, Object>>>() {
+                    });
+                } catch (Exception ignored) {
+                }
             }
             queue.add(payload);
             objectMapper.writeValue(offlineQueueFile, queue);
@@ -119,7 +133,8 @@ public class CloudSyncService {
         payload.put("customerName", order.getCustomerName());
         payload.put("customerPhone", order.getCustomerPhone());
         payload.put("startedAt", order.getStartedAt() != null ? order.getStartedAt().toString() : null);
-        payload.put("settledAt", order.getSettledAt() != null ? order.getSettledAt().toString() : java.time.LocalDateTime.now().toString());
+        payload.put("settledAt", order.getSettledAt() != null ? order.getSettledAt().toString()
+                : java.time.LocalDateTime.now().toString());
         return payload;
     }
 }

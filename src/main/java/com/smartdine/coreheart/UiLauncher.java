@@ -55,7 +55,8 @@ public class UiLauncher extends Application {
         loader.setControllerFactory(springContext::getBean);
 
         Parent root = loader.load();
-        Scene scene = new Scene(root);
+        javafx.geometry.Rectangle2D bounds = javafx.stage.Screen.getPrimary().getVisualBounds();
+        Scene scene = new Scene(root, bounds.getWidth(), bounds.getHeight());
 
         // Gracefully shut down Spring when the primary window's X button is clicked
         primaryStage.setOnCloseRequest(event -> {
@@ -64,8 +65,14 @@ public class UiLauncher extends Application {
         });
 
         primaryStage.setTitle(title);
+        primaryStage.setX(bounds.getMinX());
+        primaryStage.setY(bounds.getMinY());
+        primaryStage.setWidth(bounds.getWidth());
+        primaryStage.setHeight(bounds.getHeight());
         primaryStage.setScene(scene);
         primaryStage.show();
+        primaryStage.setMaximized(true);
+        Platform.runLater(() -> primaryStage.setMaximized(true));
     }
 
     @Override

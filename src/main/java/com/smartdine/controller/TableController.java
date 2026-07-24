@@ -62,9 +62,7 @@ public class TableController {
     public List<DiningTable> getAllTables() {
         UUID restaurantId = TenantContext.getRestaurantId();
         List<DiningTable> rawTables = tableRepository.findByRestaurantIdOrderByTableNumberAsc(restaurantId);
-        if (rawTables.isEmpty()) {
-            rawTables = tableRepository.findAll();
-        }
+
 
         // Deduplicate tables by tableNumber / ID and exclude deleted tables
         java.util.Map<String, DiningTable> uniqueMap = new java.util.LinkedHashMap<>();

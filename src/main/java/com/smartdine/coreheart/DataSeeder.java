@@ -34,13 +34,25 @@ public class DataSeeder implements CommandLineRunner {
     private SystemConfigRepository systemConfigRepository;
 
     @Autowired
+    private RestaurantSettingsRepository restaurantSettingsRepository;
+
+    @Autowired
     private MdnsService mdnsService;
+
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     // We keep the Restaurant ID fixed so your Waiter phone never loses sync!
     private UUID REST_ID = UUID.fromString("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11");
 
     @Override
     public void run(String... args) {
+        try {
+            jdbcTemplate.execute("UPDATE orders SET is_priority = FALSE WHERE is_priority IS NULL");
+        } catch (Exception e) {
+            // Log & continue
+        }
+
         // Check if system is activated. If not, do not seed default mock data.
         boolean activated = systemConfigRepository.findAll().stream().anyMatch(SystemConfig::isActivated);
         if (!activated) {
@@ -54,6 +66,13 @@ public class DataSeeder implements CommandLineRunner {
             REST_ID = config.getRestaurantId();
             TenantContext.setRestaurantId(config.getRestaurantId());
             mdnsService.registerService(config.getRestaurantId());
+
+            if (restaurantSettingsRepository.findByRestaurantId(config.getRestaurantId()).isEmpty()) {
+                RestaurantSettings defaultSettings = new RestaurantSettings(config.getRestaurantId());
+                defaultSettings.setTaxEnabled(true);
+                defaultSettings.setTaxRatePercentage(2.5);
+                restaurantSettingsRepository.saveAndFlush(defaultSettings);
+            }
         }
 
         // 1. Seed Restaurant Admin

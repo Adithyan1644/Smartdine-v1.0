@@ -52,7 +52,7 @@
                </graphic>
             </Button>
             <Region VBox.vgrow="ALWAYS" />
-            <Button text="Settings" styleClass="nav-button" maxWidth="Infinity">
+            <Button text="Settings" onAction="#handleOpenSettings" styleClass="nav-button" maxWidth="Infinity">
                <graphic>
                   <SVGPath content="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z M12 15a3 3 0 1 1 0-6 3 3 0 0 1 0 6z" scaleX="1.0" scaleY="1.0" />
                </graphic>
@@ -106,7 +106,7 @@
                   </StackPane>
                   
                   <!-- Top Settings Button with Lucide Gear vector -->
-                  <Button styleClass="btn-icon">
+                  <Button onAction="#handleOpenSettings" styleClass="btn-icon">
                      <graphic>
                         <SVGPath content="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.1a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z M12 15a3 3 0 1 1 0-6 3 3 0 0 1 0 6z" />
                      </graphic>
@@ -177,7 +177,7 @@
                                              </graphic>
                                           </Label>
                                           <Region HBox.hgrow="ALWAYS" />
-                                          <Hyperlink text="View All" styleClass="link-text" />
+                                          <Hyperlink text="View All" styleClass="link-text" onAction="#showTablesView" />
                                        </children>
                                     </HBox>
                                     <ScrollPane fitToWidth="true" style="-fx-background-color: transparent; -fx-background: transparent;" VBox.vgrow="ALWAYS">
@@ -227,7 +227,7 @@
                                              </graphic>
                                           </Label>
                                           <Region HBox.hgrow="ALWAYS" />
-                                          <Hyperlink text="View All Orders" styleClass="link-text" />
+                                          <Hyperlink text="View All Orders" styleClass="link-text" onAction="#showOrdersView" />
                                        </children>
                                     </HBox>
                                     <ScrollPane fitToWidth="true" style="-fx-background-color: transparent; -fx-background: transparent;" VBox.vgrow="ALWAYS">
@@ -262,7 +262,7 @@
                                                       </Region>
                                                    </children>
                                                 </StackPane>
-                                                <Hyperlink text="View All" styleClass="link-text" />
+                                                <Hyperlink text="View All" styleClass="link-text" onAction="#showOrdersView" />
                                              </children>
                                           </HBox>
                                           
@@ -433,14 +433,24 @@
                                     </VBox>
 
                                     <!-- Quick Modifiers -->
-                                    <VBox spacing="10.0" styleClass="card-bg" style="-fx-padding: 12;" prefHeight="130.0" minHeight="130.0">
+                                    <VBox spacing="8.0" styleClass="card-bg" style="-fx-padding: 12;" prefHeight="160.0" minHeight="140.0">
                                        <children>
-                                          <Label text="Quick Modifiers" styleClass="column-title">
-                                             <graphic>
-                                                <SVGPath content="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" scaleX="0.9" scaleY="0.9" styleClass="column-title-icon" />
-                                             </graphic>
-                                          </Label>
-                                          <FlowPane fx:id="modifiersContainer" hgap="6.0" vgap="6.0" />
+                                          <HBox alignment="CENTER_LEFT">
+                                             <children>
+                                                <Label text="Quick Modifiers" styleClass="column-title">
+                                                   <graphic>
+                                                      <SVGPath content="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" scaleX="0.9" scaleY="0.9" styleClass="column-title-icon" />
+                                                   </graphic>
+                                                </Label>
+                                                <Region HBox.hgrow="ALWAYS" />
+                                                <Hyperlink text="Edit" onAction="#handleEditModifiers" styleClass="link-text" />
+                                             </children>
+                                          </HBox>
+                                          <ScrollPane fitToWidth="true" hbarPolicy="NEVER" vbarPolicy="AS_NEEDED" style="-fx-background-color: transparent; -fx-background: transparent;" VBox.vgrow="ALWAYS">
+                                             <content>
+                                                <FlowPane fx:id="modifiersContainer" hgap="6.0" vgap="6.0" style="-fx-padding: 2 0 4 0;" />
+                                             </content>
+                                          </ScrollPane>
                                        </children>
                                     </VBox>
                                  </children>
@@ -533,8 +543,8 @@
                                                     <children>
                                                        <HBox spacing="8.0" alignment="CENTER_LEFT">
                                                           <children>
-                                                             <TextField fx:id="deliveryPhoneField" promptText="Customer Phone" HBox.hgrow="ALWAYS" style="-fx-background-color: #F8FAFC; -fx-border-color: #E2E8F0; -fx-border-radius: 6px; -fx-padding: 6 8; -fx-font-size: 13px;" />
                                                              <TextField fx:id="deliveryNameField" promptText="Customer Name" HBox.hgrow="ALWAYS" style="-fx-background-color: #F8FAFC; -fx-border-color: #E2E8F0; -fx-border-radius: 6px; -fx-padding: 6 8; -fx-font-size: 13px;" />
+                                                             <TextField fx:id="deliveryPhoneField" promptText="Contact Number" HBox.hgrow="ALWAYS" style="-fx-background-color: #F8FAFC; -fx-border-color: #E2E8F0; -fx-border-radius: 6px; -fx-padding: 6 8; -fx-font-size: 13px;" />
                                                           </children>
                                                        </HBox>
                                                        <TextArea fx:id="deliveryAddressField" promptText="Delivery Address" prefHeight="45.0" style="-fx-background-color: #F8FAFC; -fx-border-color: #E2E8F0; -fx-border-radius: 6px; -fx-padding: 4; -fx-font-size: 13px;" wrapText="true" />
@@ -546,8 +556,8 @@
                                                     <children>
                                                        <HBox spacing="8.0" alignment="CENTER_LEFT">
                                                           <children>
-                                                             <TextField fx:id="pickupPhoneField" promptText="Customer Phone" HBox.hgrow="ALWAYS" style="-fx-background-color: #F8FAFC; -fx-border-color: #E2E8F0; -fx-border-radius: 6px; -fx-padding: 6 8; -fx-font-size: 13px;" />
                                                              <TextField fx:id="pickupNameField" promptText="Customer Name" HBox.hgrow="ALWAYS" style="-fx-background-color: #F8FAFC; -fx-border-color: #E2E8F0; -fx-border-radius: 6px; -fx-padding: 6 8; -fx-font-size: 13px;" />
+                                                             <TextField fx:id="pickupPhoneField" promptText="Contact Number" HBox.hgrow="ALWAYS" style="-fx-background-color: #F8FAFC; -fx-border-color: #E2E8F0; -fx-border-radius: 6px; -fx-padding: 6 8; -fx-font-size: 13px;" />
                                                           </children>
                                                        </HBox>
                                                     </children>
@@ -572,13 +582,18 @@
                                              </content>
                                           </ScrollPane>
 
-                                          <!-- Discount & Notes triggers -->
-                                          <HBox spacing="8.0">
+                                          <!-- Addons, Discount & Notes triggers -->
+                                          <VBox spacing="6.0">
                                              <children>
-                                                <Button fx:id="addDiscountBtn" text="Add Discount" styleClass="cart-action-btn" HBox.hgrow="ALWAYS" maxWidth="Infinity" style="-fx-padding: 4 8; -fx-font-size: 13px;" onAction="#handleDiscountDialog" />
-                                                <Button fx:id="addNoteBtn" text="Add Note" styleClass="cart-action-btn" HBox.hgrow="ALWAYS" maxWidth="Infinity" style="-fx-padding: 4 8; -fx-font-size: 13px;" />
+                                                <Button fx:id="addAddonsBtn" text="🍟 + Addons / Extras" styleClass="cart-action-btn" maxWidth="Infinity" style="-fx-padding: 6 10; -fx-font-size: 13px; -fx-background-color: #ECFDF5; -fx-border-color: #10B981; -fx-border-radius: 6px; -fx-background-radius: 6px; -fx-text-fill: #047857; -fx-font-weight: bold; -fx-cursor: hand;" onAction="#handleOpenAddonsDialog" />
+                                                <HBox spacing="8.0">
+                                                   <children>
+                                                      <Button fx:id="addDiscountBtn" text="Add Discount" styleClass="cart-action-btn" HBox.hgrow="ALWAYS" maxWidth="Infinity" style="-fx-padding: 4 8; -fx-font-size: 13px;" onAction="#handleDiscountDialog" />
+                                                      <Button fx:id="addNoteBtn" text="Add Note" styleClass="cart-action-btn" HBox.hgrow="ALWAYS" maxWidth="Infinity" style="-fx-padding: 4 8; -fx-font-size: 13px;" />
+                                                   </children>
+                                                </HBox>
                                              </children>
-                                          </HBox>
+                                          </VBox>
 
                                           <!-- Calculations panel -->
                                            <VBox spacing="4.0" style="-fx-padding: 6 0; -fx-border-color: #E2E8F0; -fx-border-width: 1 0 1 0;">
@@ -588,20 +603,36 @@
                                                       <Label text="Subtotal:" style="-fx-font-size: 13px; -fx-text-fill: #64748B;" />
                                                       <Label fx:id="cartSubtotalLabel" text="₹0.00" style="-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #1E293B;" />
                                                       <Region HBox.hgrow="ALWAYS" />
-                                                      <Label text="CGST (2.5%):" style="-fx-font-size: 13px; -fx-text-fill: #64748B;" />
+                                                      <Label fx:id="cartCgstTitleLabel" text="CGST (2.5%):" style="-fx-font-size: 13px; -fx-text-fill: #64748B;" />
                                                       <Label fx:id="cartCgstLabel" text="₹0.00" style="-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #1E293B;" />
                                                       <Region HBox.hgrow="ALWAYS" />
-                                                      <Label text="SGST (2.5%):" style="-fx-font-size: 13px; -fx-text-fill: #64748B;" />
+                                                      <Label fx:id="cartSgstTitleLabel" text="SGST (2.5%):" style="-fx-font-size: 13px; -fx-text-fill: #64748B;" />
                                                       <Label fx:id="cartSgstLabel" text="₹0.00" style="-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #1E293B;" />
                                                    </children>
                                                 </HBox>
                                                 <HBox fx:id="discountRow" spacing="10.0" alignment="CENTER_LEFT" managed="false" visible="false">
-                                                    <children>
-                                                       <Label fx:id="discountTitleLabel" text="Discount:" style="-fx-font-size: 13px; -fx-text-fill: #EF4444;" />
-                                                       <Label fx:id="discountValueLabel" text="-₹0.00" style="-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #EF4444;" />
-                                                    </children>
-                                                 </HBox>
-                                                 <HBox alignment="CENTER_LEFT" style="-fx-padding: 2 0 0 0;">
+                                                   <children>
+                                                      <Label fx:id="discountTitleLabel" text="Discount:" style="-fx-font-size: 13px; -fx-text-fill: #EF4444;" />
+                                                      <Label fx:id="discountValueLabel" text="-₹0.00" style="-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #EF4444;" />
+                                                   </children>
+                                                </HBox>
+                                                <HBox fx:id="deliveryChargeRow" spacing="8.0" alignment="CENTER_LEFT" managed="false" visible="false" style="-fx-padding: 2 0;">
+                                                   <children>
+                                                      <CheckBox fx:id="enableDeliveryChargeCheckBox" text="Delivery Fee:" selected="true" style="-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #EA580C; -fx-cursor: hand;" />
+                                                      <TextField fx:id="cartDeliveryFeeField" promptText="0.00" prefWidth="65.0" style="-fx-background-color: #FFFFFF; -fx-border-color: #FED7AA; -fx-border-radius: 6px; -fx-background-radius: 6px; -fx-padding: 3 6; -fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #C2410C;" />
+                                                      <Region HBox.hgrow="ALWAYS" />
+                                                      <Label fx:id="cartDeliveryFeeLabel" text="+₹0.00" style="-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #EA580C;" />
+                                                   </children>
+                                                </HBox>
+                                                <HBox fx:id="packingChargeRow" spacing="8.0" alignment="CENTER_LEFT" managed="false" visible="false" style="-fx-padding: 2 0;">
+                                                   <children>
+                                                      <CheckBox fx:id="enablePackingChargeCheckBox" text="Packing Fee:" selected="true" style="-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #2563EB; -fx-cursor: hand;" />
+                                                      <TextField fx:id="cartPackingFeeField" promptText="0.00" prefWidth="65.0" style="-fx-background-color: #FFFFFF; -fx-border-color: #BFDBFE; -fx-border-radius: 6px; -fx-background-radius: 6px; -fx-padding: 3 6; -fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #1D4ED8;" />
+                                                      <Region HBox.hgrow="ALWAYS" />
+                                                      <Label fx:id="cartPackingFeeLabel" text="+₹0.00" style="-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #2563EB;" />
+                                                   </children>
+                                                </HBox>
+                                                <HBox alignment="CENTER_LEFT" style="-fx-padding: 2 0 0 0;">
                                                    <children>
                                                       <Label text="GRAND TOTAL" style="-fx-font-size: 16px; -fx-font-weight: bold; -fx-text-fill: #062E1E;" />
                                                       <Region HBox.hgrow="ALWAYS" />
@@ -901,167 +932,220 @@
                               </VBox>
 
                               <!-- RIGHT: ORDER DETAILS PANEL -->
-                              <VBox fx:id="orderDetailsPane" styleClass="orders-details-panel" prefWidth="520.0" minWidth="520.0" maxWidth="520.0" visible="false" managed="false">
+                              <VBox fx:id="orderDetailsPane" styleClass="orders-details-panel" prefWidth="480.0" minWidth="480.0" maxWidth="480.0" visible="false" managed="false" style="-fx-background-color: #FFFFFF; -fx-background-radius: 12px; -fx-border-color: #E2E8F0; -fx-border-radius: 12px; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.05), 10, 0, 0, 4);">
                                  <children>
                                     <!-- Detail Header Banner (Dark Green edge-to-edge) -->
-                                    <HBox alignment="CENTER_LEFT" spacing="10.0" style="-fx-background-color: #093325; -fx-background-radius: 12px 12px 0 0; -fx-padding: 16;">
+                                    <HBox alignment="CENTER_LEFT" spacing="10.0" style="-fx-background-color: #062E21; -fx-background-radius: 12px 12px 0 0; -fx-padding: 14 16;">
                                        <children>
                                           <VBox HBox.hgrow="ALWAYS" spacing="4.0">
                                              <children>
                                                 <HBox alignment="CENTER_LEFT" spacing="8.0">
                                                    <children>
                                                       <SVGPath content="M6 2h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z M9 5h8 M9 9h8 M9 13h5.5a3.5 3.5 0 0 0 0-7H9 M9 13l6 4.5" style="-fx-fill: transparent; -fx-stroke: #A3C6B9; -fx-stroke-width: 1.6;" scaleX="0.95" scaleY="0.95" />
-                                                      <Label fx:id="detOrderNumberLabel" text="Order #1089" style="-fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 21px; -fx-font-family: 'Outfit', 'Inter', 'Segoe UI', sans-serif;" />
+                                                      <Label fx:id="detOrderNumberLabel" text="Order #273" style="-fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 20px; -fx-font-family: 'Outfit', 'Inter', 'Segoe UI', sans-serif;" />
                                                    </children>
                                                 </HBox>
-                                                <Label fx:id="detOrderMetaLabel" text="Placed at 8 mins ago · Dine-In" style="-fx-text-fill: #A3C6B9; -fx-font-size: 15px; -fx-font-family: 'Outfit', 'Inter', 'Segoe UI', sans-serif;" />
+                                                <Label fx:id="detOrderMetaLabel" text="Dine-In • Placed 11 hours ago" style="-fx-text-fill: #A3C6B9; -fx-font-size: 13px; -fx-font-family: 'Outfit', 'Inter', 'Segoe UI', sans-serif;" />
                                              </children>
                                           </VBox>
-                                          <Label fx:id="detStatusBadgeLabel" text="• Preparing" styleClass="status-badge preparing" style="-fx-background-radius: 999px; -fx-padding: 4 10; -fx-font-weight: bold; -fx-font-size: 14px; -fx-font-family: 'Outfit', 'Inter', 'Segoe UI', sans-serif;" />
+                                          <Label fx:id="detStatusBadgeLabel" text="Preparing" style="-fx-background-color: rgba(255,255,255,0.12); -fx-text-fill: white; -fx-background-radius: 6px; -fx-padding: 5 12; -fx-font-weight: bold; -fx-font-size: 13px; -fx-border-color: rgba(255,255,255,0.2); -fx-border-radius: 6px;" />
                                        </children>
                                     </HBox>
 
-                                    <!-- Detail Content Body -->
-                                    <VBox spacing="0.0" style="-fx-padding: 0;" VBox.vgrow="ALWAYS">
-                                       <children>
-                                          <!-- 2-Column Info Row (Customer / Table-Waiter) -->
-                                          <HBox spacing="16.0" alignment="CENTER_LEFT" style="-fx-padding: 16 16 12 16;">
+                                    <!-- Detail Scrollable Body -->
+                                    <ScrollPane fitToWidth="true" VBox.vgrow="ALWAYS" hbarPolicy="NEVER" vbarPolicy="AS_NEEDED" style="-fx-background-color: transparent; -fx-background: transparent; -fx-padding: 0; -fx-border-width: 0;">
+                                       <content>
+                                          <VBox spacing="12.0" style="-fx-padding: 14;">
                                              <children>
-                                                <!-- Customer Details Column -->
-                                                <VBox HBox.hgrow="ALWAYS" spacing="4.0">
+                                                <!-- TABLE / WAITER SECTION -->
+                                                <VBox spacing="6.0">
                                                    <children>
-                                                      <Label text="CUSTOMER DETAILS" style="-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #5C8271;" />
-                                                      <HBox spacing="6.0" alignment="CENTER_LEFT">
+                                                      <HBox alignment="CENTER_LEFT">
                                                          <children>
-                                                            <SVGPath content="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5z M20 21a8 8 0 0 0-16 0" style="-fx-fill: transparent; -fx-stroke: #5C8271; -fx-stroke-width: 1.6;" scaleX="0.95" scaleY="0.95" />
-                                                            <Label fx:id="detCustomerNameLabel" text="Adithyan" style="-fx-font-weight: bold; -fx-text-fill: #0F172A; -fx-font-size: 17px;" />
+                                                            <Label text="TABLE / WAITER" style="-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #5C8271;" />
+                                                            <Region HBox.hgrow="ALWAYS" />
+                                                            <Button fx:id="detChangeTableBtn" text="Edit" onAction="#handleDetChangeTable" style="-fx-background-color: #FFFFFF; -fx-border-color: #CBD5E1; -fx-border-radius: 6px; -fx-background-radius: 6px; -fx-text-fill: #1E293B; -fx-font-weight: bold; -fx-font-size: 12px; -fx-padding: 3 9; -fx-cursor: hand;" />
+                                                         </children>
+                                                      </HBox>
+                                                      <!-- 2 Sub-Cards Box -->
+                                                      <HBox spacing="8.0" style="-fx-background-color: #FAFAFA; -fx-border-color: #E5E7EB; -fx-border-radius: 10px; -fx-background-radius: 10px; -fx-padding: 8;">
+                                                         <children>
+                                                            <!-- Table Sub-Card (Clickable for table change) -->
+                                                            <HBox fx:id="detTableCardBox" onMouseClicked="#handleDetChangeTable" HBox.hgrow="ALWAYS" spacing="8.0" alignment="CENTER_LEFT" style="-fx-background-color: #FFFFFF; -fx-border-color: #ECFDF5; -fx-border-radius: 8px; -fx-background-radius: 8px; -fx-padding: 8 10; -fx-cursor: hand;">
+                                                               <children>
+                                                                  <SVGPath content="M4 19V11H2V9h20v2h-2v8h-2v-8H6v8H4zm6-14h4v4h-4V5z" style="-fx-fill: transparent; -fx-stroke: #047857; -fx-stroke-width: 1.6;" scaleX="0.9" scaleY="0.9" />
+                                                                  <VBox spacing="1.0">
+                                                                     <children>
+                                                                        <Label text="Table" style="-fx-font-size: 11px; -fx-text-fill: #047857; -fx-font-weight: bold;" />
+                                                                        <Label fx:id="detTableLabel" text="T-13" style="-fx-font-weight: bold; -fx-text-fill: #047857; -fx-font-size: 15px;" />
+                                                                     </children>
+                                                                  </VBox>
+                                                               </children>
+                                                            </HBox>
+                                                            <!-- Waiter Sub-Card -->
+                                                            <HBox HBox.hgrow="ALWAYS" spacing="8.0" alignment="CENTER_LEFT" style="-fx-background-color: #FFFFFF; -fx-border-color: #F1F5F9; -fx-border-radius: 8px; -fx-background-radius: 8px; -fx-padding: 8 10;">
+                                                               <children>
+                                                                  <SVGPath content="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5z M20 21a8 8 0 0 0-16 0" style="-fx-fill: transparent; -fx-stroke: #475569; -fx-stroke-width: 1.6;" scaleX="0.9" scaleY="0.9" />
+                                                                  <VBox spacing="1.0">
+                                                                     <children>
+                                                                        <Label text="Waiter" style="-fx-font-size: 11px; -fx-text-fill: #64748B;" />
+                                                                        <Label fx:id="detWaiterLabel" text="Rajesh (Staff)" style="-fx-font-weight: bold; -fx-text-fill: #047857; -fx-font-size: 14px;" />
+                                                                     </children>
+                                                                  </VBox>
+                                                               </children>
+                                                            </HBox>
                                                          </children>
                                                       </HBox>
                                                    </children>
                                                 </VBox>
-                                                <!-- Table / Server Column -->
-                                                <VBox HBox.hgrow="ALWAYS" spacing="4.0">
+
+                                                <!-- CUSTOMER DETAILS SECTION -->
+                                                <VBox spacing="4.0">
                                                    <children>
-                                                      <Label text="TABLE / WAITER" style="-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #5C8271;" />
+                                                      <HBox alignment="CENTER_LEFT">
+                                                         <children>
+                                                            <Label text="CUSTOMER DETAILS" style="-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #5C8271;" />
+                                                            <Region HBox.hgrow="ALWAYS" />
+                                                            <Button fx:id="detAddCustomerBtn" text="+ Add Customer" onAction="#handleDetAddCustomer" style="-fx-background-color: #ECFDF5; -fx-border-color: #10B981; -fx-border-radius: 6px; -fx-background-radius: 6px; -fx-text-fill: #047857; -fx-font-weight: bold; -fx-font-size: 12px; -fx-padding: 3 9; -fx-cursor: hand;" />
+                                                         </children>
+                                                      </HBox>
                                                       <HBox spacing="6.0" alignment="CENTER_LEFT">
                                                          <children>
-                                                            <SVGPath content="M4 19V11H2V9h20v2h-2v8h-2v-8H6v8H4zm6-14h4v4h-4V5z" style="-fx-fill: transparent; -fx-stroke: #5C8271; -fx-stroke-width: 1.6;" scaleX="0.95" scaleY="0.95" />
-                                                            <Label fx:id="detTableWaiterLabel" text="Table 12 · Rajesh" style="-fx-font-weight: bold; -fx-text-fill: #0F172A; -fx-font-size: 17px;" />
+                                                            <SVGPath content="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5z M20 21a8 8 0 0 0-16 0" style="-fx-fill: transparent; -fx-stroke: #64748B; -fx-stroke-width: 1.6;" scaleX="0.85" scaleY="0.85" />
+                                                            <Label fx:id="detCustomerNameLabel" text="No customer assigned" style="-fx-font-size: 14px; -fx-text-fill: #64748B;" />
                                                          </children>
                                                       </HBox>
                                                    </children>
                                                 </VBox>
+
+                                                <!-- ITEMS IN ORDER SECTION -->
+                                                <VBox spacing="6.0">
+                                                   <children>
+                                                      <Label text="ITEMS IN ORDER" style="-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #5C8271;" />
+                                                      <VBox fx:id="detItemsContainer" spacing="4.0" style="-fx-padding: 2 0;" />
+
+                                                      <!-- Edit Order Controls Row (Addons & Discount) -->
+                                                      <HBox fx:id="detEditControlsRow" spacing="8.0" visible="false" managed="false" alignment="CENTER_LEFT" style="-fx-padding: 2 0;">
+                                                         <children>
+                                                            <Button fx:id="detAddAddonsBtn" text="+ Addons / Extras" onAction="#handleDetOpenAddonsDialog" style="-fx-background-color: #ECFDF5; -fx-border-color: #10B981; -fx-border-radius: 6px; -fx-background-radius: 6px; -fx-text-fill: #047857; -fx-font-weight: bold; -fx-font-size: 12px; -fx-padding: 5 10; -fx-cursor: hand;" />
+                                                            <Button fx:id="detAddDiscountBtn" text="+ Add Discount" onAction="#handleDetAddDiscount" style="-fx-background-color: #EFF6FF; -fx-border-color: #3B82F6; -fx-border-radius: 6px; -fx-background-radius: 6px; -fx-text-fill: #1D4ED8; -fx-font-weight: bold; -fx-font-size: 12px; -fx-padding: 5 10; -fx-cursor: hand;" />
+                                                         </children>
+                                                      </HBox>
+
+                                                      <!-- Edit Order Search Box -->
+                                                      <HBox fx:id="detEditSearchBox" alignment="CENTER_LEFT" spacing="8.0" visible="false" managed="false" style="-fx-background-color: #FFFFFF; -fx-border-color: #CBD5E1; -fx-border-radius: 8px; -fx-background-radius: 8px; -fx-padding: 8 12;">
+                                                         <children>
+                                                            <SVGPath content="M11.5 21a9.5 9.5 0 1 0 0-19 9.5 9.5 0 0 0 0 19z M22 22l-2-2" style="-fx-fill: transparent; -fx-stroke: #64748B; -fx-stroke-width: 1.8;" scaleX="0.9" scaleY="0.9" />
+                                                            <TextField fx:id="detEditSearchField" promptText="Search menu to add items..." style="-fx-background-color: transparent; -fx-padding: 0; -fx-font-size: 15px; -fx-text-fill: #1E293B;" HBox.hgrow="ALWAYS" />
+                                                         </children>
+                                                      </HBox>
+                                                   </children>
+                                                </VBox>
+
+                                                <!-- Kitchen Notes -->
+                                                <VBox fx:id="detKitchenNotesContainer" spacing="0.0">
+                                                   <children>
+                                                      <HBox spacing="8.0" alignment="CENTER_LEFT" style="-fx-background-color: #FFFFFF; -fx-border-color: #E5E7EB transparent #E5E7EB transparent; -fx-border-width: 1 0 1 0; -fx-padding: 8 10;">
+                                                         <children>
+                                                            <SVGPath content="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z M12 16v-4 M12 8h.01" style="-fx-fill: transparent; -fx-stroke: #3B82F6; -fx-stroke-width: 1.8;" scaleX="0.85" scaleY="0.85" />
+                                                            <HBox spacing="4.0" alignment="CENTER_LEFT" HBox.hgrow="ALWAYS">
+                                                                <children>
+                                                                   <Label text="Kitchen Notes:" style="-fx-font-weight: bold; -fx-text-fill: #0F172A; -fx-font-size: 13px;" />
+                                                                   <Label fx:id="detKitchenNotesLabel" text="Less Spicy on Paneer Tikka." style="-fx-font-size: 13px; -fx-text-fill: #1E293B;" wrapText="true" HBox.hgrow="ALWAYS" />
+                                                                </children>
+                                                             </HBox>
+                                                          </children>
+                                                      </HBox>
+                                                   </children>
+                                                </VBox>
+
+                                                <!-- BILL SUMMARY -->
+                                                <VBox spacing="5.0" style="-fx-background-color: #FAFAFA; -fx-border-color: #F1F5F9; -fx-border-radius: 8px; -fx-background-radius: 8px; -fx-padding: 12;">
+                                                   <children>
+                                                      <Label text="BILL SUMMARY" style="-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #5C8271; -fx-padding: 0 0 2 0;" />
+                                                      <HBox alignment="CENTER_LEFT">
+                                                         <children>
+                                                            <Label text="Subtotal" style="-fx-text-fill: #475569; -fx-font-size: 14px;" />
+                                                            <Region HBox.hgrow="ALWAYS" />
+                                                            <Label fx:id="detSubtotalLabel" text="₹660.00" style="-fx-text-fill: #1E293B; -fx-font-size: 14px;" />
+                                                         </children>
+                                                      </HBox>
+                                                      <HBox fx:id="detDiscountRow" alignment="CENTER_LEFT" visible="false" managed="false">
+                                                         <children>
+                                                            <Label text="Discount" style="-fx-text-fill: #EF4444; -fx-font-size: 14px; -fx-font-weight: bold;" />
+                                                            <Region HBox.hgrow="ALWAYS" />
+                                                            <Label fx:id="detDiscountLabel" text="-₹0.00" style="-fx-text-fill: #EF4444; -fx-font-size: 14px; -fx-font-weight: bold;" />
+                                                         </children>
+                                                      </HBox>
+                                                      <HBox fx:id="detDeliveryFeeRow" alignment="CENTER_LEFT" visible="false" managed="false" spacing="8.0">
+                                                         <children>
+                                                            <Label text="Delivery Fee:" style="-fx-text-fill: #EA580C; -fx-font-size: 13px; -fx-font-weight: bold;" />
+                                                            <TextField fx:id="detDeliveryFeeField" promptText="0.00" prefWidth="60.0" style="-fx-background-color: white; -fx-border-color: #FED7AA; -fx-border-radius: 4; -fx-padding: 2 4; -fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #C2410C;" />
+                                                            <CheckBox fx:id="detWaiveDeliveryFeeCheckBox" text="Waive Fee" style="-fx-font-size: 12px; -fx-text-fill: #64748B; -fx-cursor: hand;" />
+                                                            <Region HBox.hgrow="ALWAYS" />
+                                                            <Label fx:id="detDeliveryFeeLabel" text="+₹0.00" style="-fx-text-fill: #EA580C; -fx-font-size: 14px; -fx-font-weight: bold;" />
+                                                         </children>
+                                                      </HBox>
+                                                      <HBox fx:id="detPackingFeeRow" alignment="CENTER_LEFT" visible="false" managed="false" spacing="8.0">
+                                                         <children>
+                                                            <Label text="Packing Fee:" style="-fx-text-fill: #2563EB; -fx-font-size: 13px; -fx-font-weight: bold;" />
+                                                            <TextField fx:id="detPackingFeeField" promptText="0.00" prefWidth="60.0" style="-fx-background-color: white; -fx-border-color: #BFDBFE; -fx-border-radius: 4; -fx-padding: 2 4; -fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #1D4ED8;" />
+                                                            <CheckBox fx:id="detWaivePackingFeeCheckBox" text="Waive Fee" style="-fx-font-size: 12px; -fx-text-fill: #64748B; -fx-cursor: hand;" />
+                                                            <Region HBox.hgrow="ALWAYS" />
+                                                            <Label fx:id="detPackingFeeLabel" text="+₹0.00" style="-fx-text-fill: #2563EB; -fx-font-size: 14px; -fx-font-weight: bold;" />
+                                                         </children>
+                                                      </HBox>
+                                                      <HBox alignment="CENTER_LEFT">
+                                                         <children>
+                                                            <Label text="CGST (2.5%)" style="-fx-text-fill: #475569; -fx-font-size: 14px;" />
+                                                            <Region HBox.hgrow="ALWAYS" />
+                                                            <Label fx:id="detCgstLabel" text="₹16.50" style="-fx-text-fill: #475569; -fx-font-size: 14px;" />
+                                                         </children>
+                                                      </HBox>
+                                                      <HBox alignment="CENTER_LEFT">
+                                                         <children>
+                                                            <Label text="SGST (2.5%)" style="-fx-text-fill: #475569; -fx-font-size: 14px;" />
+                                                            <Region HBox.hgrow="ALWAYS" />
+                                                            <Label fx:id="detSgstLabel" text="₹16.50" style="-fx-text-fill: #475569; -fx-font-size: 14px;" />
+                                                         </children>
+                                                      </HBox>
+                                                      <HBox fx:id="detTaxToggleRow" alignment="CENTER_LEFT" visible="false" managed="false" style="-fx-padding: 2 0;">
+                                                         <children>
+                                                            <CheckBox fx:id="detEnableTaxCheckBox" text="Enable Tax (5%)" selected="true" style="-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #475569; -fx-cursor: hand;" />
+                                                         </children>
+                                                      </HBox>
+                                                      <Separator style="-fx-border-color: transparent transparent #CBD5E1 transparent; -fx-border-style: dashed; -fx-border-width: 0 0 1 0; -fx-padding: 2 0 2 0;" />
+                                                      <HBox alignment="CENTER_LEFT" style="-fx-padding: 2 0 0 0;">
+                                                         <children>
+                                                            <Label text="GRAND TOTAL" style="-fx-font-weight: bold; -fx-text-fill: #5C8271; -fx-font-size: 16px;" />
+                                                            <Region HBox.hgrow="ALWAYS" />
+                                                            <Label fx:id="detGrandTotalLabel" text="₹693.00" style="-fx-font-weight: 900; -fx-text-fill: #0F172A; -fx-font-size: 24px;" />
+                                                         </children>
+                                                      </HBox>
+                                                   </children>
+                                                </VBox>
+                                             </children>
+                                          </VBox>
+                                       </content>
+                                    </ScrollPane>
+
+                                    <!-- Pinned Bottom Actions Panel (Always Visible) -->
+                                    <VBox spacing="8.0" style="-fx-padding: 10 14 12 14; -fx-background-color: #FFFFFF; -fx-border-color: #E2E8F0 transparent transparent transparent; -fx-border-width: 1 0 0 0; -fx-background-radius: 0 0 12px 12px;">
+                                       <children>
+                                          <HBox spacing="8.0">
+                                             <children>
+                                                <Button fx:id="detPrintKotBtn" text="🖨 Print KOT" HBox.hgrow="ALWAYS" maxWidth="Infinity" style="-fx-background-color: #FFFFFF; -fx-border-color: #CBD5E1; -fx-border-radius: 8px; -fx-background-radius: 8px; -fx-text-fill: #1E293B; -fx-font-weight: bold; -fx-font-size: 14px; -fx-padding: 8 12; -fx-cursor: hand;" />
+                                                <Button fx:id="detEditItemsBtn" text="Edit Items" HBox.hgrow="ALWAYS" maxWidth="Infinity" style="-fx-background-color: #FFFFFF; -fx-border-color: #CBD5E1; -fx-border-radius: 8px; -fx-background-radius: 8px; -fx-text-fill: #1E293B; -fx-font-weight: bold; -fx-font-size: 14px; -fx-padding: 8 12; -fx-cursor: hand;" />
                                              </children>
                                           </HBox>
-
-                                          <Separator style="-fx-border-color: transparent transparent #E5E7EB transparent; -fx-border-style: solid; -fx-border-width: 0 0 1 0; -fx-padding: 0;" />
-
-                                          <!-- Items Section -->
-                                          <VBox spacing="8.0" VBox.vgrow="ALWAYS" style="-fx-padding: 12 16 12 16;">
+                                          <Button fx:id="detActionButton" text="✓ Mark as Ready" maxWidth="Infinity" style="-fx-background-color: #062E21; -fx-text-fill: white; -fx-font-size: 15px; -fx-font-weight: bold; -fx-padding: 10; -fx-background-radius: 8px; -fx-border-radius: 8px; -fx-cursor: hand;" />
+                                          <!-- Edit Actions Container -->
+                                          <HBox fx:id="detEditActionsContainer" spacing="8.0" visible="false" managed="false">
                                              <children>
-                                                <Label text="ITEMS IN ORDER" styleClass="items-section-title" />
-                                                <ScrollPane fitToWidth="true" styleClass="details-items-scroll" VBox.vgrow="ALWAYS" hbarPolicy="NEVER">
-                                                   <content>
-                                                      <VBox fx:id="detItemsContainer" spacing="2.0" />
-                                                   </content>
-                                                </ScrollPane>
-                                                <!-- Edit Order Search Box -->
-                                                <HBox fx:id="detEditSearchBox" alignment="CENTER_LEFT" spacing="8.0" visible="false" managed="false" style="-fx-background-color: #FFFFFF; -fx-border-color: #CBD5E1; -fx-border-radius: 8px; -fx-background-radius: 8px; -fx-padding: 10 12;">
-                                                   <children>
-                                                      <SVGPath content="M11.5 21a9.5 9.5 0 1 0 0-19 9.5 9.5 0 0 0 0 19z M22 22l-2-2" style="-fx-fill: transparent; -fx-stroke: #64748B; -fx-stroke-width: 1.8;" scaleX="0.9" scaleY="0.9" />
-                                                      <TextField fx:id="detEditSearchField" promptText="Search menu to add items..." style="-fx-background-color: transparent; -fx-padding: 0; -fx-font-size: 16px; -fx-text-fill: #1E293B;" HBox.hgrow="ALWAYS" />
-                                                   </children>
-                                                </HBox>
+                                                <Button fx:id="detCancelEditBtn" text="✕ Cancel" HBox.hgrow="ALWAYS" maxWidth="Infinity" style="-fx-background-color: transparent; -fx-border-color: #CBD5E1; -fx-border-radius: 8px; -fx-text-fill: #1E293B; -fx-font-weight: bold; -fx-font-size: 15px; -fx-padding: 10 12; -fx-cursor: hand;" />
+                                                <Button fx:id="detSaveChangesBtn" text="💾 Save Changes" HBox.hgrow="ALWAYS" maxWidth="Infinity" style="-fx-background-color: #062E21; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 15px; -fx-padding: 10 12; -fx-background-radius: 8px; -fx-border-radius: 8px; -fx-cursor: hand;" />
                                              </children>
-                                          </VBox>
-
-                                          <!-- Kitchen Notes -->
-                                          <VBox fx:id="detKitchenNotesContainer" spacing="0.0">
-                                             <children>
-                                                <HBox spacing="8.0" alignment="CENTER_LEFT" style="-fx-background-color: #FFFFFF; -fx-border-color: #E5E7EB transparent #E5E7EB transparent; -fx-border-width: 1 0 1 0; -fx-padding: 12 16;">
-                                                   <children>
-                                                      <SVGPath content="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z M12 16v-4 M12 8h.01" style="-fx-fill: transparent; -fx-stroke: #3B82F6; -fx-stroke-width: 1.8;" scaleX="0.9" scaleY="0.9" />
-                                                      <HBox spacing="4.0" alignment="CENTER_LEFT" HBox.hgrow="ALWAYS">
-                                                          <children>
-                                                             <Label text="Kitchen Notes:" style="-fx-font-weight: bold; -fx-text-fill: #0F172A; -fx-font-size: 15px;" />
-                                                             <Label fx:id="detKitchenNotesLabel" text="Less Spicy on Paneer Tikka. Veg Biryani without onions." style="-fx-font-size: 15px; -fx-text-fill: #1E293B;" wrapText="true" HBox.hgrow="ALWAYS" />
-                                                          </children>
-                                                       </HBox>
-                                                    </children>
-                                                </HBox>
-                                             </children>
-                                          </VBox>
-
-                                          <!-- Bill Breakdown -->
-                                          <VBox spacing="6.0" style="-fx-background-color: #EFF4F1; -fx-padding: 16;">
-                                             <children>
-                                                <HBox alignment="CENTER_LEFT">
-                                                   <children>
-                                                      <Label text="Subtotal" style="-fx-text-fill: #1E293B; -fx-font-size: 16px;" />
-                                                      <Region HBox.hgrow="ALWAYS" />
-                                                      <Label fx:id="detSubtotalLabel" text="₹830.00" style="-fx-text-fill: #1E293B; -fx-font-size: 16px;" />
-                                                   </children>
-                                                </HBox>
-                                                <HBox alignment="CENTER_LEFT">
-                                                   <children>
-                                                      <Label text="CGST (2.5%)" style="-fx-text-fill: #5C8271; -fx-font-size: 16px;" />
-                                                      <Region HBox.hgrow="ALWAYS" />
-                                                      <Label fx:id="detCgstLabel" text="₹20.75" style="-fx-text-fill: #5C8271; -fx-font-size: 16px;" />
-                                                   </children>
-                                                </HBox>
-                                                <HBox alignment="CENTER_LEFT">
-                                                   <children>
-                                                      <Label text="SGST (2.5%)" style="-fx-text-fill: #5C8271; -fx-font-size: 16px;" />
-                                                      <Region HBox.hgrow="ALWAYS" />
-                                                      <Label fx:id="detSgstLabel" text="₹20.75" style="-fx-text-fill: #5C8271; -fx-font-size: 16px;" />
-                                                   </children>
-                                                </HBox>
-                                                <Separator style="-fx-border-color: transparent transparent #CBD5E1 transparent; -fx-border-style: dashed; -fx-border-width: 0 0 1 0; -fx-padding: 4 0 4 0;" />
-                                                 <HBox alignment="CENTER_LEFT" style="-fx-padding: 4 0 0 0;">
-                                                   <children>
-                                                      <Label text="GRAND TOTAL" style="-fx-font-weight: bold; -fx-text-fill: #5C8271; -fx-font-size: 17px;" />
-                                                      <Region HBox.hgrow="ALWAYS" />
-                                                      <Label fx:id="detGrandTotalLabel" text="₹871.50" style="-fx-font-weight: 900; -fx-text-fill: #0F172A; -fx-font-size: 28px;" />
-                                                   </children>
-                                                </HBox>
-                                             </children>
-                                          </VBox>
-
-                                          <!-- Actions Panel -->
-                                          <VBox spacing="12.0" style="-fx-padding: 16;">
-                                             <children>
-                                                <HBox spacing="10.0">
-                                                   <children>
-                                                      <Button fx:id="detPrintKotBtn" text="Print KOT" HBox.hgrow="ALWAYS" maxWidth="Infinity" style="-fx-background-color: transparent; -fx-border-color: #CBD5E1; -fx-border-radius: 8px; -fx-text-fill: #1E293B; -fx-font-weight: bold; -fx-font-size: 16px; -fx-padding: 10 16;">
-                                                         <graphic>
-                                                            <SVGPath content="M19 8H5a3 3 0 0 0-3 3v6h4v4h12v-4h4v-6a3 3 0 0 0-3-3z M6 12H8 M14 4H10v4h4V4z M16 14H8v5h8v-5z" style="-fx-fill: transparent; -fx-stroke: #1E293B; -fx-stroke-width: 1.6;" scaleX="0.9" scaleY="0.9" />
-                                                         </graphic>
-                                                      </Button>
-                                                      <Button fx:id="detEditItemsBtn" text="Edit Items" HBox.hgrow="ALWAYS" maxWidth="Infinity" style="-fx-background-color: transparent; -fx-border-color: #CBD5E1; -fx-border-radius: 8px; -fx-text-fill: #1E293B; -fx-font-weight: bold; -fx-font-size: 16px; -fx-padding: 10 16;">
-                                                         <graphic>
-                                                            <SVGPath content="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4Z" style="-fx-fill: transparent; -fx-stroke: #1E293B; -fx-stroke-width: 1.6;" scaleX="0.9" scaleY="0.9" />
-                                                         </graphic>
-                                                      </Button>
-                                                   </children>
-                                                </HBox>
-                                                <Button fx:id="detActionButton" text="Mark as Ready" maxWidth="Infinity" style="-fx-background-color: #234E3D; -fx-text-fill: white; -fx-font-size: 17px; -fx-font-weight: bold; -fx-padding: 12; -fx-background-radius: 8px; -fx-border-radius: 8px;" />
-                                                <!-- Edit Actions Container -->
-                                                <HBox fx:id="detEditActionsContainer" spacing="10.0" visible="false" managed="false">
-                                                   <children>
-                                                      <Button fx:id="detCancelEditBtn" text="Cancel" HBox.hgrow="ALWAYS" maxWidth="Infinity" style="-fx-background-color: transparent; -fx-border-color: #CBD5E1; -fx-border-radius: 8px; -fx-text-fill: #1E293B; -fx-font-weight: bold; -fx-font-size: 17px; -fx-padding: 12 16; -fx-cursor: hand;">
-                                                         <graphic>
-                                                            <SVGPath content="M18 6L6 18 M6 6l12 12" style="-fx-fill: transparent; -fx-stroke: #1E293B; -fx-stroke-width: 2.0;" scaleX="0.95" scaleY="0.95" />
-                                                         </graphic>
-                                                      </Button>
-                                                      <Button fx:id="detSaveChangesBtn" text="Save Changes" HBox.hgrow="ALWAYS" maxWidth="Infinity" style="-fx-background-color: #234E3D; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 17px; -fx-padding: 12 16; -fx-background-radius: 8px; -fx-border-radius: 8px; -fx-cursor: hand;">
-                                                         <graphic>
-                                                            <SVGPath content="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z M17 21v-8H7v8 M7 3v5h8" style="-fx-fill: transparent; -fx-stroke: white; -fx-stroke-width: 2.0;" scaleX="0.95" scaleY="0.95" />
-                                                         </graphic>
-                                                      </Button>
-                                                   </children>
-                                                </HBox>
-                                             </children>
-                                          </VBox>
+                                          </HBox>
                                        </children>
                                     </VBox>
                                  </children>

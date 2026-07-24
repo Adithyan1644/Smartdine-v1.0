@@ -120,15 +120,20 @@ public class KitchenController {
             }
 
             // Automatic state transition logic for KOT
+            boolean allItemsReady = true;
             boolean anyPreparingOrReady = false;
             for (KOTItem item : kot.getItems()) {
                 if (item.getItemStatus() == KOTStatus.PREPARING || item.getItemStatus() == KOTStatus.READY) {
                     anyPreparingOrReady = true;
-                    break;
+                }
+                if (item.getItemStatus() != KOTStatus.READY && item.getItemStatus() != KOTStatus.SERVED && item.getItemStatus() != KOTStatus.CANCELLED) {
+                    allItemsReady = false;
                 }
             }
             
-            if (anyPreparingOrReady && kot.getOverallStatus() == KOTStatus.PENDING) {
+            if (allItemsReady && !kot.getItems().isEmpty()) {
+                kot.setOverallStatus(KOTStatus.READY);
+            } else if (anyPreparingOrReady && kot.getOverallStatus() == KOTStatus.PENDING) {
                 kot.setOverallStatus(KOTStatus.PREPARING);
             }
 

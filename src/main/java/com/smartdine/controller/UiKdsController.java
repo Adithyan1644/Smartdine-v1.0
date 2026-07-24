@@ -224,12 +224,25 @@ public class UiKdsController implements Initializable {
                     restaurantId, 
                     List.of(KOTStatus.PENDING, KOTStatus.PREPARING, KOTStatus.READY, KOTStatus.SERVED)
             );
+            if (allKots.isEmpty()) {
+                allKots = kotRepository.findAll().stream()
+                        .filter(k -> k.getOverallStatus() != KOTStatus.CANCELLED)
+                        .collect(Collectors.toList());
+            }
 
-            // Filter to only show today's tickets
-            java.time.LocalDate today = java.time.LocalDate.now();
-            allKots = allKots.stream()
-                .filter(k -> k.getCreatedAt() != null && k.getCreatedAt().toLocalDate().isEqual(today))
-                .collect(Collectors.toList());
+            // Exclude KOTs from settled, completed, or cancelled orders
+            allKots = allKots.stream().filter(k -> {
+                if (k.getOverallStatus() == KOTStatus.SERVED || k.getOverallStatus() == KOTStatus.CANCELLED) {
+                    return false;
+                }
+                if (k.getOrderId() != null) {
+                    com.smartdine.coreheart.Order ord = orderRepository.findById(k.getOrderId()).orElse(null);
+                    if (ord != null && (ord.getStatus() == com.smartdine.coreheart.OrderStatus.PAID || ord.getStatus() == com.smartdine.coreheart.OrderStatus.CANCELLED)) {
+                        return false;
+                    }
+                }
+                return true;
+            }).collect(Collectors.toList());
 
             // Filter KOTs based on Station Filter ComboBox
             String selectedStation = stationFilter.getValue();
@@ -372,6 +385,11 @@ public class UiKdsController implements Initializable {
                     return table.contains(searchQuery) || num.contains(searchQuery) || matchItems;
                 })
                 .sorted((k1, k2) -> {
+                    boolean p1 = isKotPriority(k1);
+                    boolean p2 = isKotPriority(k2);
+                    if (p1 != p2) {
+                        return Boolean.compare(p2, p1);
+                    }
                     int w1 = k1.getOverallStatus() == KOTStatus.PENDING ? 0 : (k1.getOverallStatus() == KOTStatus.PREPARING ? 1 : 2);
                     int w2 = k2.getOverallStatus() == KOTStatus.PENDING ? 0 : (k2.getOverallStatus() == KOTStatus.PREPARING ? 1 : 2);
                     if (w1 != w2) {
@@ -420,6 +438,17 @@ public class UiKdsController implements Initializable {
         });
     }
 
+    private boolean isKotPriority(KOT kot) {
+        if (kot == null || kot.getOrderId() == null) return false;
+        try {
+            return orderRepository.findById(kot.getOrderId())
+                    .map(com.smartdine.coreheart.Order::isPriority)
+                    .orElse(false);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     private VBox buildKotCard(KOT kot, String selectedStation) {
         VBox card = new VBox(12);
         card.setPrefSize(250, 290);
@@ -434,10 +463,17 @@ public class UiKdsController implements Initializable {
             elapsedMinutes = elapsedSec / 60;
         }
 
-        // Color-code card border based on age & status
+        boolean isPriority = isKotPriority(kot);
+
+        // Color-code card border based on age & status & priority
         boolean isDelayed = elapsedMinutes > 10 && kot.getOverallStatus() != KOTStatus.READY;
-        String topColor = isDelayed ? "#EF4444" : (kot.getOverallStatus() == KOTStatus.READY ? "#10B981" : (kot.getOverallStatus() == KOTStatus.PREPARING ? "#2563EB" : "#FB923C"));
-        card.setStyle("-fx-background-color: #FFFFFF; -fx-background-radius: 12px; -fx-border-radius: 12px; -fx-border-color: " + topColor + " #E2E8F0 #E2E8F0 #E2E8F0; -fx-border-width: 4 1 1 1; -fx-padding: 14; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.02), 5, 0, 0, 2);");
+        String topColor = isPriority ? "#F59E0B" : (isDelayed ? "#EF4444" : (kot.getOverallStatus() == KOTStatus.READY ? "#10B981" : (kot.getOverallStatus() == KOTStatus.PREPARING ? "#2563EB" : "#FB923C")));
+        
+        if (isPriority) {
+            card.setStyle("-fx-background-color: #FFFDF5; -fx-background-radius: 12px; -fx-border-radius: 12px; -fx-border-color: #F59E0B; -fx-border-width: 3 3 3 3; -fx-padding: 14; -fx-effect: dropshadow(three-pass-box, rgba(245, 158, 11, 0.4), 10, 0, 0, 2);");
+        } else {
+            card.setStyle("-fx-background-color: #FFFFFF; -fx-background-radius: 12px; -fx-border-radius: 12px; -fx-border-color: " + topColor + " #E2E8F0 #E2E8F0 #E2E8F0; -fx-border-width: 4 1 1 1; -fx-padding: 14; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.02), 5, 0, 0, 2);");
+        }
 
         // Card Header: Table/Source & Age Timer
         HBox header = new HBox();
@@ -452,8 +488,13 @@ public class UiKdsController implements Initializable {
                 }
             }
         } catch (Exception ignored) {}
+
+        if (isPriority) {
+            sourceText = "👑 " + sourceText;
+        }
+
         Label sourceLabel = new Label(sourceText);
-        sourceLabel.setStyle("-fx-font-weight: 900; -fx-font-size: 15px; -fx-text-fill: #0F172A;");
+        sourceLabel.setStyle("-fx-font-weight: 900; -fx-font-size: 15px; -fx-text-fill: " + (isPriority ? "#B45309" : "#0F172A") + ";");
         
         // Timer display formatted nicely
         long minutes = elapsedSec / 60;
@@ -494,7 +535,14 @@ public class UiKdsController implements Initializable {
             statusBadge.setStyle("-fx-background-color: #FFF3E0; -fx-text-fill: #EA580C; -fx-font-size: 9px; -fx-font-weight: 800; -fx-padding: 2 6; -fx-background-radius: 4;");
         }
 
-        subHeader.getChildren().addAll(kotNum, spacer, statusBadge);
+        if (isPriority) {
+            Label crownBadge = new Label("👑 PRIORITY");
+            crownBadge.setStyle("-fx-background-color: #FEF3C7; -fx-text-fill: #D97706; -fx-font-size: 9px; -fx-font-weight: 900; -fx-padding: 2 6; -fx-background-radius: 4; -fx-border-color: #F59E0B; -fx-border-radius: 4;");
+            subHeader.getChildren().addAll(kotNum, spacer, crownBadge, statusBadge);
+            subHeader.setSpacing(4);
+        } else {
+            subHeader.getChildren().addAll(kotNum, spacer, statusBadge);
+        }
 
         // Card Body: Items List (filter based on selected station)
         VBox itemsBox = new VBox(8);
@@ -541,9 +589,12 @@ public class UiKdsController implements Initializable {
                     itemText.setStyle("-fx-font-weight: bold; -fx-font-size: 13px; -fx-fill: #10B981;");
                     statusLabel = " [Ready]";
                     statusColor = "#10B981";
+                } else if (item.getItemStatus() == KOTStatus.PREPARING) {
+                    statusLabel = " [Preparing]";
+                    statusColor = "#EA580C";
                 } else {
-                    statusLabel = " [Added]";
-                    statusColor = "#2563EB";
+                    statusLabel = " [In Queue]";
+                    statusColor = "#64748B";
                 }
                 
                 Text stateText = new Text(statusLabel);
@@ -552,22 +603,8 @@ public class UiKdsController implements Initializable {
                 itemRow.getChildren().addAll(cb, itemText, stateText);
             }
 
-            cb.setOnAction(event -> {
-                boolean cooked = cb.isSelected();
-                item.setItemStatus(cooked ? KOTStatus.READY : KOTStatus.PREPARING);
-
-                boolean allCooked = kot.getItems().stream()
-                    .allMatch(ki -> ki.getItemStatus() == KOTStatus.READY || ki.getItemStatus() == KOTStatus.SERVED || ki.getItemStatus() == KOTStatus.CANCELLED);
-                
-                if (allCooked) {
-                    kot.setOverallStatus(KOTStatus.READY);
-                } else {
-                    kot.setOverallStatus(KOTStatus.PREPARING);
-                }
-
-                kotRepository.save(kot);
-                refreshKdsData();
-            });
+            // Disable checkbox to make biller view read-only (status tracked from kitchen)
+            cb.setDisable(true);
 
             if (item.getSpecialInstruction() != null && !item.getSpecialInstruction().trim().isEmpty()) {
                 VBox itemCol = new VBox(2);
@@ -586,57 +623,26 @@ public class UiKdsController implements Initializable {
         scrollPane.setFitToWidth(true);
         VBox.setVgrow(scrollPane, Priority.ALWAYS);
 
-        // Card Footer: Action Button
-        Button actionBtn = new Button();
-        actionBtn.setMaxWidth(Double.MAX_VALUE);
-        actionBtn.setDisable(kot.getOverallStatus() == KOTStatus.SERVED || kot.getOverallStatus() == KOTStatus.CANCELLED);
+        // Card Footer: Read-Only Status Indicator for Biller POS View
+        Label statusFooterLabel = new Label();
+        statusFooterLabel.setMaxWidth(Double.MAX_VALUE);
+        statusFooterLabel.setAlignment(Pos.CENTER);
         
-        if (kot.getOverallStatus() == KOTStatus.PENDING) {
-            actionBtn.setText("START COOKING");
-            if (actionBtn.isDisable()) {
-                actionBtn.setStyle("-fx-background-color: #FB923C; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 8; -fx-padding: 10; -fx-cursor: default; -fx-font-size: 12px; -fx-opacity: 0.55;");
-            } else {
-                actionBtn.setStyle("-fx-background-color: #FB923C; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 8; -fx-padding: 10; -fx-cursor: hand; -fx-font-size: 12px;");
-            }
-        } else if (kot.getOverallStatus() == KOTStatus.PREPARING) {
-            actionBtn.setText("MARK READY");
-            if (actionBtn.isDisable()) {
-                actionBtn.setStyle("-fx-background-color: #2563EB; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 8; -fx-padding: 10; -fx-cursor: default; -fx-font-size: 12px; -fx-opacity: 0.55;");
-            } else {
-                actionBtn.setStyle("-fx-background-color: #2563EB; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 8; -fx-padding: 10; -fx-cursor: hand; -fx-font-size: 12px;");
-            }
+        if (kot.getOverallStatus() == KOTStatus.PREPARING) {
+            statusFooterLabel.setText("🍳 PREPARING (Cooking...)");
+            statusFooterLabel.setStyle("-fx-background-color: #FFEDD5; -fx-text-fill: #C2410C; -fx-font-weight: bold; -fx-background-radius: 8; -fx-padding: 10; -fx-font-size: 13px; -fx-border-color: #FDBA74; -fx-border-radius: 8;");
+        } else if (kot.getOverallStatus() == KOTStatus.READY) {
+            statusFooterLabel.setText("✅ READY TO SERVE");
+            statusFooterLabel.setStyle("-fx-background-color: #DCFCE7; -fx-text-fill: #15803D; -fx-font-weight: bold; -fx-background-radius: 8; -fx-padding: 10; -fx-font-size: 13px; -fx-border-color: #86EFAC; -fx-border-radius: 8;");
+        } else if (kot.getOverallStatus() == KOTStatus.SERVED) {
+            statusFooterLabel.setText("✨ SERVED");
+            statusFooterLabel.setStyle("-fx-background-color: #F3F4F6; -fx-text-fill: #6B7280; -fx-font-weight: bold; -fx-background-radius: 8; -fx-padding: 10; -fx-font-size: 13px;");
         } else {
-            actionBtn.setText("SERVE ORDER");
-            if (actionBtn.isDisable()) {
-                actionBtn.setStyle("-fx-background-color: #10B981; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 8; -fx-padding: 10; -fx-cursor: default; -fx-font-size: 12px; -fx-opacity: 0.55;");
-            } else {
-                actionBtn.setStyle("-fx-background-color: #10B981; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 8; -fx-padding: 10; -fx-cursor: hand; -fx-font-size: 12px;");
-            }
+            statusFooterLabel.setText("⏳ IN QUEUE (Awaiting Prep)");
+            statusFooterLabel.setStyle("-fx-background-color: #F1F5F9; -fx-text-fill: #475569; -fx-font-weight: bold; -fx-background-radius: 8; -fx-padding: 10; -fx-font-size: 13px; -fx-border-color: #CBD5E1; -fx-border-radius: 8;");
         }
-        
-        actionBtn.setOnAction(event -> {
-            if (kot.getOverallStatus() == KOTStatus.PENDING) {
-                kot.setOverallStatus(KOTStatus.PREPARING);
-            } else if (kot.getOverallStatus() == KOTStatus.PREPARING) {
-                kot.setOverallStatus(KOTStatus.READY);
-                kot.getItems().forEach(ki -> {
-                    if (ki.getItemStatus() != KOTStatus.READY && ki.getItemStatus() != KOTStatus.SERVED && ki.getItemStatus() != KOTStatus.CANCELLED) {
-                        ki.setItemStatus(KOTStatus.READY);
-                    }
-                });
-            } else if (kot.getOverallStatus() == KOTStatus.READY) {
-                kot.setOverallStatus(KOTStatus.SERVED);
-                kot.getItems().forEach(ki -> {
-                    if (ki.getItemStatus() != KOTStatus.CANCELLED) {
-                        ki.setItemStatus(KOTStatus.SERVED);
-                    }
-                });
-            }
-            kotRepository.save(kot);
-            refreshKdsData();
-        });
 
-        card.getChildren().addAll(header, subHeader, scrollPane, actionBtn);
+        card.getChildren().addAll(header, subHeader, scrollPane, statusFooterLabel);
         return card;
     }
 

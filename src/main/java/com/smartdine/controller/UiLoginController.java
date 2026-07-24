@@ -93,10 +93,18 @@ public class UiLoginController {
                         loader.setControllerFactory(springContext::getBean);
 
                         Parent root = loader.load();
-                        Scene scene = new Scene(root);
+                        javafx.geometry.Rectangle2D bounds = javafx.stage.Screen.getPrimary().getVisualBounds();
+                        Scene scene = new Scene(root, bounds.getWidth(), bounds.getHeight());
+                        
+                        stage.setX(bounds.getMinX());
+                        stage.setY(bounds.getMinY());
+                        stage.setWidth(bounds.getWidth());
+                        stage.setHeight(bounds.getHeight());
                         stage.setScene(scene);
                         stage.setTitle("SMARTDINE BILLER STATION");
                         stage.show();
+                        stage.setMaximized(true);
+                        Platform.runLater(() -> stage.setMaximized(true));
                     } catch (Exception e) {
                         loginBtn.setDisable(false);
                         showError("Failed to launch dashboard: " + e.getMessage());

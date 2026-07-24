@@ -249,11 +249,55 @@ public class Order extends BaseEntity {
         this.settledAt = settledAt;
     }
 
+    @Column(name = "delivery_fee", precision = 10, scale = 2)
+    private BigDecimal deliveryFee = BigDecimal.ZERO;
+
     public String getMergedTableIds() {
         return mergedTableIds;
     }
 
     public void setMergedTableIds(String mergedTableIds) {
         this.mergedTableIds = mergedTableIds;
+    }
+
+    @Column(name = "packing_fee", precision = 10, scale = 2)
+    private BigDecimal packingFee = BigDecimal.ZERO;
+
+    public BigDecimal getDeliveryFee() {
+        return deliveryFee;
+    }
+
+    public void setDeliveryFee(BigDecimal deliveryFee) {
+        this.deliveryFee = deliveryFee;
+    }
+
+    public BigDecimal getPackingFee() {
+        return packingFee;
+    }
+
+    public void setPackingFee(BigDecimal packingFee) {
+        this.packingFee = packingFee;
+    }
+
+    @Column(name = "is_priority")
+    private Boolean priority = Boolean.FALSE;
+
+    @PostLoad
+    private void onLoad() {
+        if (this.priority == null) {
+            this.priority = Boolean.FALSE;
+        }
+    }
+
+    public boolean isPriority() {
+        return Boolean.TRUE.equals(priority);
+    }
+
+    public boolean getPriority() {
+        return Boolean.TRUE.equals(priority);
+    }
+
+    public void setPriority(Boolean priority) {
+        this.priority = priority != null ? priority : Boolean.FALSE;
     }
 }

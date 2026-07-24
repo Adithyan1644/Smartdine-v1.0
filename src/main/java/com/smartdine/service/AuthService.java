@@ -36,13 +36,28 @@ public class AuthService {
 
     // Professional Login for Admin/Setup
     public AuthResponse authenticateUser(LoginRequest request) {
-        AppUser user = userRepository.findByUsername(request.getUsername())
-                .orElseThrow(() -> new RuntimeException("Invalid Username"));
-        
-        System.out.println(">>> DB password hash: " + user.getPassword());
-        System.out.println(">>> Matches result: " + passwordEncoder.matches(request.getPassword(), user.getPassword()));
+        if (request == null || request.getUsername() == null) {
+            throw new RuntimeException("Invalid Username");
+        }
 
-        if (passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+        String targetUsername = request.getUsername().trim();
+        String rawPassword = request.getPassword() != null ? request.getPassword().trim() : "";
+
+        AppUser user = userRepository.findByUsernameIgnoreCase(targetUsername)
+                .orElseGet(() -> userRepository.findAll().stream()
+                        .filter(u -> u.getUsername() != null && u.getUsername().trim().equalsIgnoreCase(targetUsername))
+                        .findFirst()
+                        .orElseThrow(() -> new RuntimeException("Invalid Username")));
+        
+        boolean matchesBcrypt = user.getPassword() != null && passwordEncoder.matches(rawPassword, user.getPassword());
+        boolean matchesPlaintext = user.getPassword() != null && rawPassword.equals(user.getPassword().trim());
+
+        if (matchesBcrypt || matchesPlaintext) {
+            if (matchesPlaintext && !matchesBcrypt) {
+                user.setPassword(passwordEncoder.encode(rawPassword));
+                userRepository.save(user);
+            }
+
             String token = jwtUtil.generateToken(user.getUsername(), user.getRole().name(), user.getRestaurantId());
             return new AuthResponse(token, user.getRole().name(), user.getRestaurantId(), user.getFullName());
         } else {
@@ -90,12 +105,34 @@ public class AuthService {
     }
 
     public java.util.List<AppUser> getActiveWaiters(java.util.UUID restaurantId) {
-        java.util.List<AppUser> list = userRepository.findByRestaurantIdAndRoleAndIsActiveTrue(restaurantId, com.smartdine.coreheart.UserRole.WAITER);
+        return getWaiters(restaurantId, true);
+    }
+
+    public java.util.List<AppUser> getWaiters(java.util.UUID restaurantId, boolean activeOnly) {
+        java.util.List<AppUser> list = new java.util.ArrayList<>();
+        if (restaurantId != null) {
+            if (activeOnly) {
+                list = userRepository.findByRestaurantIdAndRoleAndIsActiveTrue(restaurantId, com.smartdine.coreheart.UserRole.WAITER);
+            } else {
+                list = userRepository.findByRestaurantIdAndRole(restaurantId, com.smartdine.coreheart.UserRole.WAITER);
+            }
+        }
+        
+        if (list.isEmpty()) {
+            list = userRepository.findAll().stream()
+                .filter(u -> u.getRole() == com.smartdine.coreheart.UserRole.WAITER)
+                .filter(u -> !activeOnly || u.isActive())
+                .toList();
+        }
+
         java.util.List<AppUser> unique = new java.util.ArrayList<>();
-        java.util.Set<String> pins = new java.util.HashSet<>();
+        java.util.Set<String> keys = new java.util.HashSet<>();
         for (AppUser user : list) {
-            if (user.getPin() != null && !pins.contains(user.getPin())) {
-                pins.add(user.getPin());
+            String key = (user.getPin() != null && !user.getPin().trim().isEmpty()) 
+                ? user.getPin().trim() 
+                : (user.getUsername() != null ? user.getUsername().trim() : user.getId().toString());
+            if (!keys.contains(key)) {
+                keys.add(key);
                 unique.add(user);
             }
         }

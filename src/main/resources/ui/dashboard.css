@@ -1111,6 +1111,17 @@
     -fx-alignment: center;
 }
 
+.kds-stat-icon-container {
+    -fx-pref-width: 44px;
+    -fx-pref-height: 44px;
+    -fx-min-width: 44px;
+    -fx-min-height: 44px;
+    -fx-max-width: 44px;
+    -fx-max-height: 44px;
+    -fx-background-radius: 50%;
+    -fx-alignment: center;
+}
+
 .orders-stat-icon-container.grey-circle { -fx-background-color: #F1F5F9; }
 .orders-stat-icon-container.orange-circle { -fx-background-color: #FEF3C7; }
 .orders-stat-icon-container.blue-circle { -fx-background-color: #EFF6FF; }
@@ -1478,4 +1489,66 @@
 
 .custom-dialog-pane .text-field:focused, .custom-dialog-pane .text-area:focused {
     -fx-border-color: #0A4F34;
+}
+
+/* --- PRIORITY ORDER STYLES --- */
+.priority-order-card {
+    -fx-border-color: #F59E0B !important;
+    -fx-border-width: 2px !important;
+    -fx-background-color: #FFFBEB !important;
+    -fx-effect: dropshadow(three-pass-box, rgba(245, 158, 11, 0.25), 8, 0, 0, 2) !important;
+}
+
+.priority-order-row {
+    -fx-background-color: #FFFBEB !important;
+    -fx-border-color: transparent transparent #FDE68A #F59E0B !important;
+    -fx-border-width: 0 0 1px 4px !important;
+}
+
+.priority-table-card {
+    -fx-border-color: #F59E0B !important;
+    -fx-border-width: 2px !important;
+    -fx-background-color: #FFFDF5 !important;
+    -fx-effect: dropshadow(three-pass-box, rgba(245, 158, 11, 0.3), 10, 0, 0, 2) !important;
+}
+
+.priority-badge-gold {
+    -fx-background-color: #FEF3C7;
+    -fx-text-fill: #D97706;
+    -fx-border-color: #F59E0B;
+    -fx-border-radius: 6px;
+    -fx-background-radius: 6px;
+    -fx-font-weight: 900;
+    -fx-font-size: 11px;
+    -fx-padding: 2 6;
+}
+
+/* Context Menu Professional Styling */
+.context-menu {
+    -fx-background-color: #FFFFFF;
+    -fx-background-radius: 10px;
+    -fx-border-radius: 10px;
+    -fx-border-color: #E2E8F0;
+    -fx-border-width: 1px;
+    -fx-padding: 5px;
+    -fx-effect: dropshadow(three-pass-box, rgba(15, 23, 42, 0.15), 12, 0, 0, 4);
+}
+
+.menu-item {
+    -fx-padding: 8px 14px;
+    -fx-background-radius: 6px;
+}
+
+.menu-item .label {
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #0F172A;
+}
+
+.menu-item:focused, .menu-item:hover {
+    -fx-background-color: #FEF3C7;
+}
+
+.menu-item:focused .label, .menu-item:hover .label {
+    -fx-text-fill: #B45309;
 }

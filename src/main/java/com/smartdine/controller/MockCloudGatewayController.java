@@ -20,9 +20,8 @@ public class MockCloudGatewayController {
     // Key  = activation code (case-insensitive)
     // Value = restaurantId UUID
     private static final Map<String, String> CODE_TO_RESTAURANT = Map.of(
-        "sd-28e792",    "28e79200-0000-4000-a000-000000000001",   // Your actual restaurant
-        "sd-a0eebc99",  "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",  // Legacy demo restaurant
-        "a0eebc99",     "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"   // Legacy shorthand
+        "sd-612376",    "9183522f-e62b-4cdc-b852-cac4b347cbc8",   // Ryxon Restaurant (15 Tables) ONLY
+        "612376",       "9183522f-e62b-4cdc-b852-cac4b347cbc8"    // Ryxon Shorthand Code
     );
 
     @GetMapping("/activate")
@@ -146,36 +145,7 @@ public class MockCloudGatewayController {
         );
         response.put("menuItems", menuItems);
 
-        // ── Modifier Groups ──────────────────────────────────────────────────
-        List<Map<String, Object>> modifierGroups = List.of(
-            Map.of(
-                "name", "Global Drinks",
-                "isGlobal", true,
-                "options", List.of(
-                    Map.of("name", "Water 500ml",  "price", 10.00),
-                    Map.of("name", "Water 1L",     "price", 20.00),
-                    Map.of("name", "Cold Drink",   "price", 20.00)
-                )
-            ),
-            Map.of(
-                "name", "Global Sides & Sauces",
-                "isGlobal", true,
-                "options", List.of(
-                    Map.of("name", "Mayonnaise",      "price", 15.00),
-                    Map.of("name", "Tomato Ketchup",  "price",  0.00),
-                    Map.of("name", "Green Chutney",   "price",  0.00)
-                )
-            ),
-            Map.of(
-                "name", "Naan Extras",
-                "isGlobal", false,
-                "options", List.of(
-                    Map.of("name", "Extra Butter",   "price", 10.00),
-                    Map.of("name", "Cheese Filling", "price", 30.00)
-                )
-            )
-        );
-        response.put("modifierGroups", modifierGroups);
+        response.put("modifierGroups", List.of());
 
         // ── Waiters ──────────────────────────────────────────────────────────
         List<Map<String, Object>> waiters = List.of(

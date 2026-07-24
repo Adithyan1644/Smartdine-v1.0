@@ -276,6 +276,30 @@ public class UiDashboardController implements Initializable {
     private Label discountValueLabel;
 
     @FXML
+    private HBox deliveryChargeRow;
+
+    @FXML
+    private CheckBox enableDeliveryChargeCheckBox;
+
+    @FXML
+    private TextField cartDeliveryFeeField;
+
+    @FXML
+    private Label cartDeliveryFeeLabel;
+
+    @FXML
+    private HBox packingChargeRow;
+
+    @FXML
+    private CheckBox enablePackingChargeCheckBox;
+
+    @FXML
+    private TextField cartPackingFeeField;
+
+    @FXML
+    private Label cartPackingFeeLabel;
+
+    @FXML
     private Label cartCgstLabel;
 
     @FXML
@@ -438,6 +462,12 @@ public class UiDashboardController implements Initializable {
     private com.smartdine.repository.SystemConfigRepository systemConfigRepository;
 
     @Autowired
+    private com.smartdine.repository.RestaurantSettingsRepository restaurantSettingsRepository;
+
+    @Autowired
+    private com.smartdine.repository.AddonItemRepository addonItemRepository;
+
+    @Autowired
     private com.smartdine.service.ActivationService activationService;
 
     @Autowired
@@ -453,6 +483,22 @@ public class UiDashboardController implements Initializable {
                 .orElse(UUID.fromString("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"));
     }
 
+    public com.smartdine.coreheart.RestaurantSettings getEffectiveRestaurantSettings(UUID restaurantId) {
+        return restaurantSettingsRepository.findAll().stream()
+                .findFirst()
+                .map(s -> {
+                    if (restaurantId != null && (s.getRestaurantId() == null || !s.getRestaurantId().equals(restaurantId))) {
+                        s.setRestaurantId(restaurantId);
+                        restaurantSettingsRepository.saveAndFlush(s);
+                    }
+                    return s;
+                })
+                .orElseGet(() -> {
+                    com.smartdine.coreheart.RestaurantSettings newS = new com.smartdine.coreheart.RestaurantSettings(restaurantId);
+                    return restaurantSettingsRepository.saveAndFlush(newS);
+                });
+    }
+
     // --- STATE VARIABLES ---
     private Timeline autoRefreshTimeline;
     private final java.util.concurrent.atomic.AtomicBoolean isRefreshing = new java.util.concurrent.atomic.AtomicBoolean(false);
@@ -463,6 +509,7 @@ public class UiDashboardController implements Initializable {
     private String selectedPaymentMode = null;
     private OrderType selectedOrderType = OrderType.DINE_IN;
     private List<String> activeModifiers = new ArrayList<>(); // Modifiers applied to the next added item
+    private List<String> quickModifierMasterList = new ArrayList<>(List.of("Less Spicy", "Extra Spicy", "Extra Gravy", "Dry", "Jain"));
     private CartItem selectedCartItem = null;
     private double discountValue = 0.0;
     private boolean isDiscountPercentage = false; // true if %, false if fixed amount
@@ -491,6 +538,7 @@ public class UiDashboardController implements Initializable {
         private int savedQuantity = 0;
         private List<String> modifiers = new ArrayList<>();
         private String notes = "";
+        private BigDecimal addonExtraPrice = BigDecimal.ZERO;
 
         public CartItem(MenuItem item, int quantity) {
             this.item = item;
@@ -528,12 +576,43 @@ public class UiDashboardController implements Initializable {
         public void setNotes(String notes) {
             this.notes = notes;
         }
+
+        public BigDecimal getAddonExtraPrice() {
+            return addonExtraPrice != null ? addonExtraPrice : BigDecimal.ZERO;
+        }
+
+        public void setAddonExtraPrice(BigDecimal addonExtraPrice) {
+            this.addonExtraPrice = addonExtraPrice;
+        }
+
+        public void addAddonExtraPrice(BigDecimal extra) {
+            if (extra != null) {
+                this.addonExtraPrice = getAddonExtraPrice().add(extra);
+            }
+        }
     }
 
     @Override
     public void initialize(URL location, ResourceBundle resources) {
         // Set default tenant context for the Biller PC
-        TenantContext.setRestaurantId(TenantContext.getRestaurantId());
+        UUID defaultRid = TenantContext.getRestaurantId();
+        if (defaultRid == null) {
+            defaultRid = getActiveRestaurantId();
+        }
+        TenantContext.setRestaurantId(defaultRid);
+
+        javafx.application.Platform.runLater(() -> {
+            try {
+                if (rootPane != null && rootPane.getScene() != null && rootPane.getScene().getWindow() instanceof javafx.stage.Stage stage) {
+                    javafx.geometry.Rectangle2D bounds = javafx.stage.Screen.getPrimary().getVisualBounds();
+                    stage.setX(bounds.getMinX());
+                    stage.setY(bounds.getMinY());
+                    stage.setWidth(bounds.getWidth());
+                    stage.setHeight(bounds.getHeight());
+                    stage.setMaximized(true);
+                }
+            } catch (Exception ignored) {}
+        });
 
         if (dineInCustomerBtn != null) {
             dineInCustomerBtn.setOnAction(e -> openCustomerDetailsDialog());
@@ -596,6 +675,30 @@ public class UiDashboardController implements Initializable {
                     }
                 }
             });
+        }
+
+        if (enableDeliveryChargeCheckBox != null) {
+            enableDeliveryChargeCheckBox.selectedProperty().addListener((obs, oldV, newV) -> {
+                if (cartDeliveryFeeField != null) {
+                    cartDeliveryFeeField.setDisable(!newV);
+                }
+                updateCalculations();
+            });
+        }
+        if (cartDeliveryFeeField != null) {
+            cartDeliveryFeeField.textProperty().addListener((obs, oldV, newV) -> updateCalculations());
+        }
+
+        if (enablePackingChargeCheckBox != null) {
+            enablePackingChargeCheckBox.selectedProperty().addListener((obs, oldV, newV) -> {
+                if (cartPackingFeeField != null) {
+                    cartPackingFeeField.setDisable(!newV);
+                }
+                updateCalculations();
+            });
+        }
+        if (cartPackingFeeField != null) {
+            cartPackingFeeField.textProperty().addListener((obs, oldV, newV) -> updateCalculations());
         }
 
         // Setup Search/ComboBox listeners for Orders Screen
@@ -834,16 +937,28 @@ public class UiDashboardController implements Initializable {
         if (!isRefreshing.compareAndSet(false, true)) {
             return;
         }
-        UUID restaurantId = TenantContext.getRestaurantId();
+        UUID rid = TenantContext.getRestaurantId();
+        if (rid == null) {
+            rid = getActiveRestaurantId();
+        }
+        final UUID restaurantId = rid;
         CompletableFuture.runAsync(() -> {
             TenantContext.setRestaurantId(restaurantId);
             try {
                 // 1. Fetch tables
                 var tablesList = tableRepository.findByRestaurantId(restaurantId);
+                if (tablesList.isEmpty()) {
+                    tablesList = tableRepository.findAll();
+                }
 
                 // 2. Fetch active orders
                 var activeOrders = orderRepository.findByRestaurantIdAndStatusNotIn(restaurantId,
                         java.util.Arrays.asList(OrderStatus.PAID, OrderStatus.CANCELLED));
+                if (activeOrders.isEmpty()) {
+                    activeOrders = orderRepository.findAll().stream()
+                            .filter(o -> o.getStatus() != OrderStatus.PAID && o.getStatus() != OrderStatus.CANCELLED)
+                            .toList();
+                }
 
                 // 3. Fetch active KOTs for load gauge
                 List<KOT> activeKots = new ArrayList<>();
@@ -875,9 +990,17 @@ public class UiDashboardController implements Initializable {
                 java.time.LocalDateTime startOfToday = java.time.LocalDate.now().atStartOfDay();
                 var platformTodayOrders = orderRepository.findByRestaurantIdAndStartedAtAfter(restaurantId, startOfToday);
 
+                List<Order> platformActiveOrders = activeOrders.stream()
+                        .filter(o -> o.getSource() != null && (o.getSource().equalsIgnoreCase("ZOMATO") ||
+                                o.getSource().equalsIgnoreCase("SWIGGY") ||
+                                o.getSource().equalsIgnoreCase("ONLINE") ||
+                                o.getSource().equalsIgnoreCase("PLATFORM")))
+                        .toList();
+
                 // Update UI on JavaFX thread
                 final var finalTablesList = tablesList;
                 final var finalActiveOrders = activeOrders;
+                final var finalPlatformActiveOrders = platformActiveOrders;
                 final var finalActiveKots = activeKots;
                 final var finalUnavailableItems = unavailableItems;
                 final var finalPlatformTodayOrders = platformTodayOrders;
@@ -887,8 +1010,8 @@ public class UiDashboardController implements Initializable {
                         renderTablesToUiSync(finalTablesList, finalActiveOrders, finalActiveKots);
                         renderRunningOrdersSync(finalActiveOrders, kotsMap);
                         renderStockOutSync(finalUnavailableItems);
-                        renderPlatformStatsSync(finalActiveOrders, finalPlatformTodayOrders);
-                        renderPlatformOrdersSync(finalActiveOrders, kotsMap);
+                        renderPlatformStatsSync(finalPlatformActiveOrders, finalPlatformTodayOrders);
+                        renderPlatformOrdersSync(finalPlatformActiveOrders, kotsMap);
                     } catch (Exception ex) {
                         ex.printStackTrace();
                     }
@@ -1227,14 +1350,19 @@ public class UiDashboardController implements Initializable {
         renderTablesPageContent();
     }
 
+
+
     private void ensureTableExists(String number, int capacity, String area, TableStatus status) {
         try {
-            var list = tableRepository.findByRestaurantId(TenantContext.getRestaurantId());
+            UUID rid = TenantContext.getRestaurantId();
+            if (rid == null) rid = getActiveRestaurantId();
+            var list = tableRepository.findByRestaurantId(rid);
+            if (list.isEmpty()) list = tableRepository.findAll();
             boolean exists = list.stream().anyMatch(t -> t.getTableNumber().equalsIgnoreCase(number));
             if (!exists) {
                 DiningTable t = new DiningTable();
                 t.setId(java.util.UUID.nameUUIDFromBytes(number.getBytes()));
-                t.setRestaurantId(TenantContext.getRestaurantId());
+                t.setRestaurantId(rid);
                 t.setTableNumber(number);
                 t.setCapacity(capacity);
                 t.setAreaName(area);
@@ -1247,13 +1375,25 @@ public class UiDashboardController implements Initializable {
     }
 
     private void loadTablesPageData() {
-        UUID restaurantId = TenantContext.getRestaurantId();
+        UUID rid = TenantContext.getRestaurantId();
+        if (rid == null) {
+            rid = getActiveRestaurantId();
+        }
+        final UUID restaurantId = rid;
         CompletableFuture.runAsync(() -> {
             TenantContext.setRestaurantId(restaurantId);
             try {
                 var tablesList = tableRepository.findByRestaurantId(restaurantId);
+                if (tablesList.isEmpty()) {
+                    tablesList = tableRepository.findAll();
+                }
                 var activeOrders = orderRepository.findByRestaurantIdAndStatusNotIn(restaurantId,
                         java.util.Arrays.asList(OrderStatus.PAID, OrderStatus.CANCELLED));
+                if (activeOrders.isEmpty()) {
+                    activeOrders = orderRepository.findAll().stream()
+                            .filter(o -> o.getStatus() != OrderStatus.PAID && o.getStatus() != OrderStatus.CANCELLED)
+                            .toList();
+                }
 
                 // Pre-fetch KOTs in bulk for all active orders to avoid N+1 queries in render
                 List<UUID> orderIds = activeOrders.stream().map(Order::getId).collect(java.util.stream.Collectors.toList());
@@ -1746,12 +1886,35 @@ public class UiDashboardController implements Initializable {
     private List<MenuItem> getAllMenuItemsForBilling() {
         List<MenuItem> list = new ArrayList<>();
         try {
-            list.addAll(menuRepository.findByRestaurantIdAndIsDeletedFalse(TenantContext.getRestaurantId()));
+            UUID rid = TenantContext.getRestaurantId();
+            if (rid == null) {
+                rid = getActiveRestaurantId();
+            }
+            if (rid != null) {
+                list.addAll(menuRepository.findByRestaurantIdAndIsDeletedFalse(rid));
+            }
+            List<MenuItem> allNonDeleted = menuRepository.findAll().stream()
+                    .filter(i -> !i.isDeleted())
+                    .toList();
+            for (MenuItem item : allNonDeleted) {
+                boolean exists = list.stream().anyMatch(i -> 
+                    (i.getId() != null && i.getId().equals(item.getId())) || 
+                    (i.getName() != null && item.getName() != null && i.getName().equalsIgnoreCase(item.getName()))
+                );
+                if (!exists) {
+                    list.add(item);
+                }
+            }
         } catch (Exception e) {
             System.out.println("Failed to fetch from DB: " + e.getMessage());
         }
 
-        return list;
+        // Filter out Addon items so they only appear in Settings and Addons popup modal
+        return list.stream()
+                .filter(i -> i.getName() != null && !i.getName().startsWith("↳ ") 
+                        && !"Addon".equalsIgnoreCase(i.getCategoryName()) 
+                        && !i.getName().toLowerCase().startsWith("addon:"))
+                .toList();
     }
 
     private void forceOrAddMock(List<MenuItem> list, String name, String code, double price, boolean isVeg,
@@ -1763,7 +1926,11 @@ public class UiDashboardController implements Initializable {
 
     private MenuItem resolveOrCreateMenuItem(String name, String code, double price, boolean isVeg,
             String categoryName) {
-        UUID restaurantId = TenantContext.getRestaurantId();
+        UUID rid = TenantContext.getRestaurantId();
+        if (rid == null) {
+            rid = getActiveRestaurantId();
+        }
+        final UUID restaurantId = rid;
         UUID nameBasedId = java.util.UUID.nameUUIDFromBytes(name.getBytes());
         try {
             // Check if it exists in DB by ID first
@@ -1863,43 +2030,56 @@ public class UiDashboardController implements Initializable {
             return;
         top8ItemsContainer.getChildren().clear();
 
-        String[] names = {
-                "Butter Chicken Masala", "Paneer Tikka", "Veg Biryani",
-                "Hakka Noodles", "Chilli Paneer", "Garlic Naan",
-                "Schezwan Noodles", "Masala Dosa"
-        };
-        String[] codes = { "BCM", "PT", "VB", "HN", "CP", "GN", "SN", "MD" };
-        double[] prices = { 480, 220, 280, 200, 240, 90, 220, 120 };
-        boolean[] isVegs = { false, true, true, true, true, true, false, true };
+        UUID rid = TenantContext.getRestaurantId();
+        if (rid == null) rid = getActiveRestaurantId();
 
-        for (int i = 0; i < names.length; i++) {
-            final int idx = i;
+        List<MenuItem> dbItems = menuRepository.findByRestaurantIdAndIsDeletedFalse(rid).stream()
+                .filter(i -> i.getName() != null && !i.getName().startsWith("↳ ") 
+                        && !"Addon".equalsIgnoreCase(i.getCategoryName()) 
+                        && !i.getName().toLowerCase().startsWith("addon:"))
+                .toList();
+        if (dbItems.isEmpty()) {
+            dbItems = menuRepository.findAll().stream()
+                    .filter(i -> !i.isDeleted() && i.getName() != null && !i.getName().startsWith("↳ ") 
+                            && !"Addon".equalsIgnoreCase(i.getCategoryName()) 
+                            && !i.getName().toLowerCase().startsWith("addon:"))
+                    .toList();
+        }
+
+        List<MenuItem> topItems = dbItems.stream().limit(8).toList();
+
+        if (topItems.isEmpty()) {
+            Label emptyLbl = new Label("No menu items available");
+            emptyLbl.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 12px; -fx-padding: 8 0 8 0;");
+            top8ItemsContainer.getChildren().add(emptyLbl);
+            return;
+        }
+
+        int rank = 1;
+        for (MenuItem item : topItems) {
             HBox row = new HBox();
             row.getStyleClass().add("top-8-row");
             row.setSpacing(10);
             row.setAlignment(Pos.CENTER_LEFT);
 
-            Label rankLabel = new Label(String.valueOf(i + 1));
+            Label rankLabel = new Label(String.valueOf(rank++));
             rankLabel.getStyleClass().add("top-8-num");
 
-            Label nameLabel = new Label(names[i]);
+            Label nameLabel = new Label(item.getName());
             nameLabel.getStyleClass().add("top-8-name");
 
             Region spacer = new Region();
             HBox.setHgrow(spacer, Priority.ALWAYS);
 
-            Label codeLabel = new Label(codes[i]);
+            String codeStr = item.getShortCode() != null && !item.getShortCode().isEmpty() ? item.getShortCode() : "₹" + item.getPrice();
+            Label codeLabel = new Label(codeStr);
             codeLabel.getStyleClass().add("top-8-code");
 
             Button addBtn = new Button("+");
             addBtn.getStyleClass().add("qty-btn");
             addBtn.setStyle(
                     "-fx-background-color: #DCFCE7; -fx-text-fill: #15803D; -fx-font-weight: bold; -fx-cursor: hand;");
-            addBtn.setOnAction(e -> {
-                MenuItem item = resolveOrCreateMenuItem(names[idx], codes[idx], prices[idx], isVegs[idx],
-                        isVegs[idx] ? "Veg" : "Non-Veg");
-                handleAddMenuItem(item);
-            });
+            addBtn.setOnAction(e -> handleAddMenuItem(item));
 
             row.getChildren().addAll(rankLabel, nameLabel, spacer, codeLabel, addBtn);
             top8ItemsContainer.getChildren().add(row);
@@ -1911,34 +2091,56 @@ public class UiDashboardController implements Initializable {
             return;
         frequentItemsContainer.getChildren().clear();
 
-        String[] names = { "Paneer Tikka", "Veg Manchurian", "Chilli Paneer", "Jeera Rice" };
-        String[] codes = { "PT", "VM", "CP", "JR" };
-        double[] prices = { 220, 200, 240, 140 };
-        boolean[] isVegs = { true, true, true, true };
+        UUID rid = TenantContext.getRestaurantId();
+        if (rid == null) rid = getActiveRestaurantId();
 
-        for (int i = 0; i < names.length; i++) {
-            final int idx = i;
+        List<MenuItem> dbItems = menuRepository.findByRestaurantIdAndIsDeletedFalse(rid).stream()
+                .filter(i -> i.getName() != null && !i.getName().startsWith("↳ ") 
+                        && !"Addon".equalsIgnoreCase(i.getCategoryName()) 
+                        && !i.getName().toLowerCase().startsWith("addon:"))
+                .toList();
+        if (dbItems.isEmpty()) {
+            dbItems = menuRepository.findAll().stream()
+                    .filter(i -> !i.isDeleted() && i.getName() != null && !i.getName().startsWith("↳ ") 
+                            && !"Addon".equalsIgnoreCase(i.getCategoryName()) 
+                            && !i.getName().toLowerCase().startsWith("addon:"))
+                    .toList();
+        }
+
+        List<MenuItem> frequentItems = dbItems.stream().skip(2).limit(4).toList();
+        if (frequentItems.isEmpty()) {
+            frequentItems = dbItems.stream().limit(4).toList();
+        }
+
+        if (frequentItems.isEmpty()) {
+            Label emptyLbl = new Label("No frequent items available");
+            emptyLbl.setStyle("-fx-text-fill: #94A3B8; -fx-font-size: 12px; -fx-padding: 8 0 8 0;");
+            frequentItemsContainer.getChildren().add(emptyLbl);
+            return;
+        }
+
+        for (MenuItem item : frequentItems) {
             HBox row = new HBox();
             row.getStyleClass().add("top-8-row");
             row.setSpacing(10);
             row.setAlignment(Pos.CENTER_LEFT);
 
-            Label nameLabel = new Label(names[i] + " (" + codes[i] + ")");
+            String codeStr = item.getShortCode() != null && !item.getShortCode().isEmpty() ? " (" + item.getShortCode() + ")" : "";
+            Label nameLabel = new Label(item.getName() + codeStr);
             nameLabel.getStyleClass().add("top-8-name");
 
             Region spacer = new Region();
             HBox.setHgrow(spacer, Priority.ALWAYS);
 
+            Label priceLabel = new Label("₹" + item.getPrice());
+            priceLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #0F172A; -fx-font-size: 12px;");
+
             Button addBtn = new Button("+");
             addBtn.getStyleClass().add("qty-btn");
-            addBtn.setStyle("-fx-background-color: #DCFCE7; -fx-text-fill: #15803D; -fx-font-weight: bold;");
-            addBtn.setOnAction(e -> {
-                MenuItem item = resolveOrCreateMenuItem(names[idx], codes[idx], prices[idx], isVegs[idx],
-                        isVegs[idx] ? "Veg" : "Non-Veg");
-                handleAddMenuItem(item);
-            });
+            addBtn.setStyle("-fx-background-color: #DCFCE7; -fx-text-fill: #15803D; -fx-font-weight: bold; -fx-cursor: hand;");
+            addBtn.setOnAction(e -> handleAddMenuItem(item));
 
-            row.getChildren().addAll(nameLabel, spacer, addBtn);
+            row.getChildren().addAll(nameLabel, spacer, priceLabel, addBtn);
             frequentItemsContainer.getChildren().add(row);
         }
     }
@@ -1948,8 +2150,11 @@ public class UiDashboardController implements Initializable {
             return;
         modifiersContainer.getChildren().clear();
 
-        String[] mods = { "Less Spicy", "Extra Spicy", "Extra Gravy", "Dry" };
-        for (String mod : mods) {
+        if (quickModifierMasterList.isEmpty()) {
+            quickModifierMasterList.addAll(List.of("Less Spicy", "Extra Spicy", "Extra Gravy", "Dry", "Jain"));
+        }
+
+        for (String mod : quickModifierMasterList) {
             boolean isActive = false;
             if (selectedCartItem != null) {
                 isActive = selectedCartItem.getModifiers().contains(mod);
@@ -1961,6 +2166,9 @@ public class UiDashboardController implements Initializable {
             chip.getStyleClass().add("modifier-chip");
             if (isActive) {
                 chip.getStyleClass().add("active");
+                chip.setStyle("-fx-background-color: #F0FDF4; -fx-border-color: #10B981; -fx-text-fill: #047857; -fx-font-weight: bold; -fx-background-radius: 16px; -fx-padding: 6 12; -fx-cursor: hand;");
+            } else {
+                chip.setStyle("-fx-background-color: #F8FAFC; -fx-border-color: #E2E8F0; -fx-text-fill: #334155; -fx-font-weight: bold; -fx-background-radius: 16px; -fx-padding: 6 12; -fx-cursor: hand;");
             }
 
             final boolean activeVal = isActive;
@@ -2346,7 +2554,12 @@ public class UiDashboardController implements Initializable {
             }
             Label nameLabel = new Label(ci.getItem().getName());
             nameLabel.getStyleClass().add("cart-item-name");
-            nameLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-cursor: hand;");
+            boolean isAddonItem = ci.getItem().getName() != null && ci.getItem().getName().startsWith("↳ ");
+            if (isAddonItem) {
+                nameLabel.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #047857; -fx-padding: 0 0 0 10; -fx-cursor: hand;");
+            } else {
+                nameLabel.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-cursor: hand;");
+            }
             nameLabel.setOnMouseClicked(e -> {
                 selectedCartItem = ci;
                 populateCart();
@@ -2509,7 +2722,8 @@ public class UiDashboardController implements Initializable {
             java.math.BigDecimal price = ci.getItem().getPrice();
             if (price == null)
                 price = java.math.BigDecimal.ZERO;
-            subtotal = subtotal.add(price.multiply(java.math.BigDecimal.valueOf(ci.getQuantity())));
+            java.math.BigDecimal unitPrice = price.add(ci.getAddonExtraPrice());
+            subtotal = subtotal.add(unitPrice.multiply(java.math.BigDecimal.valueOf(ci.getQuantity())));
         }
 
         java.math.BigDecimal discountAmt = java.math.BigDecimal.ZERO;
@@ -2544,11 +2758,91 @@ public class UiDashboardController implements Initializable {
             }
         }
 
+        UUID resolvedRid = TenantContext.getRestaurantId();
+        if (resolvedRid == null) resolvedRid = getActiveRestaurantId();
+        final UUID finalRid = resolvedRid;
+
+        com.smartdine.coreheart.RestaurantSettings settings = getEffectiveRestaurantSettings(finalRid);
+
+        com.smartdine.coreheart.SystemConfig config = systemConfigRepository.findAll().stream().findFirst().orElse(null);
+
         java.math.BigDecimal taxableSubtotal = subtotal.subtract(discountAmt);
-        java.math.BigDecimal taxRate = java.math.BigDecimal.valueOf(0.025); // 2.5%
-        java.math.BigDecimal cgst = taxableSubtotal.multiply(taxRate);
-        java.math.BigDecimal sgst = taxableSubtotal.multiply(taxRate);
-        java.math.BigDecimal grandTotal = taxableSubtotal.add(cgst).add(sgst);
+        if (taxableSubtotal.compareTo(java.math.BigDecimal.ZERO) < 0) {
+            taxableSubtotal = java.math.BigDecimal.ZERO;
+        }
+
+        java.math.BigDecimal cgst = java.math.BigDecimal.ZERO;
+        java.math.BigDecimal sgst = java.math.BigDecimal.ZERO;
+
+        if (settings.isTaxEnabled()) {
+            double cgstRateVal = (config != null && config.getCgstRate() != null) ? config.getCgstRate().doubleValue() / 100.0 : (settings.getTaxRatePercentage() / 100.0);
+            double sgstRateVal = (config != null && config.getSgstRate() != null) ? config.getSgstRate().doubleValue() / 100.0 : (settings.getTaxRatePercentage() / 100.0);
+
+            cgst = taxableSubtotal.multiply(java.math.BigDecimal.valueOf(cgstRateVal));
+            sgst = taxableSubtotal.multiply(java.math.BigDecimal.valueOf(sgstRateVal));
+        }
+
+        java.math.BigDecimal deliveryFee = java.math.BigDecimal.ZERO;
+        boolean showDeliveryRow = selectedOrderType == OrderType.DELIVERY && settings.isDeliveryChargeEnabled();
+        if (deliveryChargeRow != null) {
+            deliveryChargeRow.setVisible(showDeliveryRow);
+            deliveryChargeRow.setManaged(showDeliveryRow);
+        }
+
+        if (showDeliveryRow) {
+            boolean isChecked = settings.isDeliveryChargeEnabled() && (enableDeliveryChargeCheckBox == null || enableDeliveryChargeCheckBox.isSelected());
+            if (cartDeliveryFeeField != null) {
+                cartDeliveryFeeField.setDisable(!isChecked);
+                if (cartDeliveryFeeField.getText() == null || cartDeliveryFeeField.getText().trim().isEmpty()) {
+                    cartDeliveryFeeField.setText(String.format("%.2f", settings.getDefaultDeliveryFee()));
+                }
+            }
+
+            if (isChecked) {
+                double val = settings.getDefaultDeliveryFee();
+                if (cartDeliveryFeeField != null && cartDeliveryFeeField.getText() != null && !cartDeliveryFeeField.getText().trim().isEmpty()) {
+                    try {
+                        val = Double.parseDouble(cartDeliveryFeeField.getText().trim());
+                    } catch (NumberFormatException ignored) {}
+                }
+                deliveryFee = java.math.BigDecimal.valueOf(val);
+            }
+        }
+        if (cartDeliveryFeeLabel != null) {
+            cartDeliveryFeeLabel.setText(String.format("+₹%.2f", deliveryFee.doubleValue()));
+        }
+
+        java.math.BigDecimal packingFee = java.math.BigDecimal.ZERO;
+        boolean showPackingRow = (selectedOrderType == OrderType.PICK_UP || selectedOrderType == OrderType.DELIVERY) && settings.isPackingChargeEnabled();
+        if (packingChargeRow != null) {
+            packingChargeRow.setVisible(showPackingRow);
+            packingChargeRow.setManaged(showPackingRow);
+        }
+
+        if (showPackingRow) {
+            boolean isChecked = settings.isPackingChargeEnabled() && (enablePackingChargeCheckBox == null || enablePackingChargeCheckBox.isSelected());
+            if (cartPackingFeeField != null) {
+                cartPackingFeeField.setDisable(!isChecked);
+                if (cartPackingFeeField.getText() == null || cartPackingFeeField.getText().trim().isEmpty()) {
+                    cartPackingFeeField.setText(String.format("%.2f", settings.getDefaultPackingFee()));
+                }
+            }
+
+            if (isChecked) {
+                double val = settings.getDefaultPackingFee();
+                if (cartPackingFeeField != null && cartPackingFeeField.getText() != null && !cartPackingFeeField.getText().trim().isEmpty()) {
+                    try {
+                        val = Double.parseDouble(cartPackingFeeField.getText().trim());
+                    } catch (NumberFormatException ignored) {}
+                }
+                packingFee = java.math.BigDecimal.valueOf(val);
+            }
+        }
+        if (cartPackingFeeLabel != null) {
+            cartPackingFeeLabel.setText(String.format("+₹%.2f", packingFee.doubleValue()));
+        }
+
+        java.math.BigDecimal grandTotal = taxableSubtotal.add(cgst).add(sgst).add(deliveryFee).add(packingFee);
 
         if (cartSubtotalLabel != null)
             cartSubtotalLabel.setText(String.format("₹%.2f", subtotal.doubleValue()));
@@ -3624,6 +3918,22 @@ public class UiDashboardController implements Initializable {
 
             Order savedOrder = orderRepository.save(order);
 
+            // Update all KOTs for this settled order to SERVED status
+            try {
+                List<KOT> settledKots = kotRepository.findByOrderId(savedOrder.getId());
+                for (KOT k : settledKots) {
+                    k.setOverallStatus(KOTStatus.SERVED);
+                    if (k.getItems() != null) {
+                        for (KOTItem ki : k.getItems()) {
+                            ki.setItemStatus(KOTStatus.SERVED);
+                        }
+                    }
+                    kotRepository.save(k);
+                }
+            } catch (Exception kotEx) {
+                System.err.println("⚠️ Could not update KOT status to SERVED: " + kotEx.getMessage());
+            }
+
             if (cloudSyncService != null) {
                 try {
                     cloudSyncService.syncOrderToCloud(savedOrder);
@@ -4692,9 +5002,14 @@ public class UiDashboardController implements Initializable {
                 });
                 titleText = activeOrder.getTableName() + " (" + String.join(" + ", mergedNames) + ")";
             }
-            Label nameLabel = new Label("🪑 " + titleText);
+            String titlePrefix = (activeOrder != null && activeOrder.isPriority()) ? "👑 🪑 " : "🪑 ";
+            Label nameLabel = new Label(titlePrefix + titleText);
             nameLabel.getStyleClass().add("table-title");
             nameLabel.setTooltip(new javafx.scene.control.Tooltip(titleText));
+
+            if (activeOrder != null && activeOrder.isPriority()) {
+                tableCard.getStyleClass().add("priority-table-card");
+            }
 
             Region spacer = new Region();
             HBox.setHgrow(spacer, Priority.ALWAYS);
@@ -4764,7 +5079,20 @@ public class UiDashboardController implements Initializable {
             }
 
             tableCard.setCursor(javafx.scene.Cursor.HAND);
+            final Order tableOrderForContext = activeOrder;
+            if (tableOrderForContext != null) {
+                tableCard.setOnContextMenuRequested(e -> {
+                    showOrderContextMenu(tableOrderForContext, tableCard, e.getScreenX(), e.getScreenY());
+                    e.consume();
+                });
+            }
             tableCard.setOnMouseClicked(clickEvent -> {
+                if (clickEvent.getButton() == javafx.scene.input.MouseButton.SECONDARY) {
+                    if (tableOrderForContext != null) {
+                        showOrderContextMenu(tableOrderForContext, tableCard, clickEvent.getScreenX(), clickEvent.getScreenY());
+                    }
+                    return;
+                }
                 try {
                     // Clear L1 cache to evict cached state
                     try {
@@ -4916,12 +5244,21 @@ public class UiDashboardController implements Initializable {
     }
 
     public void loadRunningOrders() {
-        UUID restaurantId = TenantContext.getRestaurantId();
+        UUID rid = TenantContext.getRestaurantId();
+        if (rid == null) {
+            rid = getActiveRestaurantId();
+        }
+        final UUID restaurantId = rid;
         CompletableFuture.runAsync(() -> {
             TenantContext.setRestaurantId(restaurantId);
             try {
                 var activeOrders = orderRepository.findByRestaurantIdAndStatusNotIn(restaurantId,
                         java.util.Arrays.asList(OrderStatus.PAID, OrderStatus.CANCELLED));
+                if (activeOrders.isEmpty()) {
+                    activeOrders = orderRepository.findAll().stream()
+                            .filter(o -> o.getStatus() != OrderStatus.PAID && o.getStatus() != OrderStatus.CANCELLED)
+                            .toList();
+                }
 
                 List<Order> localOrders = activeOrders.stream()
                         .filter(o -> o.getSource() == null || !(o.getSource().toUpperCase().contains("ZOMATO") ||
@@ -4951,7 +5288,19 @@ public class UiDashboardController implements Initializable {
     private void renderRunningOrdersSync(List<Order> localOrders, java.util.Map<UUID, List<KOT>> kotsMap) {
         runningOrdersContainer.getChildren().clear();
 
-        if (localOrders.isEmpty()) {
+        List<Order> sortedOrders = localOrders.stream()
+                .filter(o -> o.getSource() == null || !(o.getSource().equalsIgnoreCase("ZOMATO") ||
+                        o.getSource().equalsIgnoreCase("SWIGGY") ||
+                        o.getSource().equalsIgnoreCase("ONLINE") ||
+                        o.getSource().equalsIgnoreCase("PLATFORM")))
+                .sorted((o1, o2) -> {
+                    int pComp = Boolean.compare(o2.isPriority(), o1.isPriority());
+                    if (pComp != 0) return pComp;
+                    return getOrderStartTimeFallback(o2).compareTo(getOrderStartTimeFallback(o1));
+                })
+                .toList();
+
+        if (sortedOrders.isEmpty()) {
             Label emptyLabel = new Label("No running orders");
             emptyLabel.setStyle(
                     "-fx-text-fill: #94A3B8; -fx-font-size: 13px; -fx-alignment: center; -fx-padding: 20 0 0 0;");
@@ -4960,7 +5309,7 @@ public class UiDashboardController implements Initializable {
             return;
         }
 
-        for (Order order : localOrders) {
+        for (Order order : sortedOrders) {
             List<KOT> kots = kotsMap.getOrDefault(order.getId(), new ArrayList<>());
             List<String> itemStrings = new ArrayList<>();
             for (KOT kot : kots) {
@@ -5003,6 +5352,38 @@ public class UiDashboardController implements Initializable {
         }
     }
 
+    private void showOrderContextMenu(Order order, javafx.scene.Node anchor, double screenX, double screenY) {
+        if (order == null || order.getId() == null) return;
+        javafx.scene.control.ContextMenu contextMenu = new javafx.scene.control.ContextMenu();
+        boolean isPrio = order.isPriority();
+        javafx.scene.control.MenuItem priorityItem = new javafx.scene.control.MenuItem(
+                isPrio ? "👑  Remove Priority" : "👑  Make Priority"
+        );
+        priorityItem.setOnAction(evt -> {
+            try {
+                orderService.toggleOrderPriority(order.getId());
+                Platform.runLater(() -> {
+                    if (dashboardView != null && dashboardView.isVisible()) {
+                        refreshDashboardAsync();
+                    }
+                    if (ordersView != null && ordersView.isVisible()) {
+                        loadOrdersToUi();
+                    }
+                    if (tablesView != null && tablesView.isVisible()) {
+                        loadTablesPageData();
+                    }
+                    if (kdsNativeController != null) {
+                        kdsNativeController.refreshKdsData();
+                    }
+                });
+            } catch (Exception ex) {
+                System.err.println("Error toggling order priority: " + ex.getMessage());
+            }
+        });
+        contextMenu.getItems().add(priorityItem);
+        contextMenu.show(anchor, screenX, screenY);
+    }
+
     private void addOrderCard(Order sourceOrder, String id, String customer, String items, String time, String type,
             double amount,
             String status, String duration) {
@@ -5010,6 +5391,9 @@ public class UiDashboardController implements Initializable {
         card.getStyleClass().add("order-card");
         if (type != null) {
             card.getStyleClass().add(type.toLowerCase());
+        }
+        if (sourceOrder != null && sourceOrder.isPriority()) {
+            card.getStyleClass().add("priority-order-card");
         }
         card.setAlignment(Pos.CENTER_LEFT);
         card.setSpacing(10);
@@ -5028,8 +5412,7 @@ public class UiDashboardController implements Initializable {
         path.setScaleY(0.8);
 
         String strokeColor = "#10B981"; // default green for PICK_UP
-        String svgContent = "M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z M3 6h18 M16 10a4 4 0 01-8 0"; // Shopping
-                                                                                                          // Bag
+        String svgContent = "M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z M3 6h18 M16 10a4 4 0 01-8 0"; // Shopping Bag
 
         if ("DINE_IN".equalsIgnoreCase(type)) {
             strokeColor = "#3B82F6"; // Blue
@@ -5058,6 +5441,11 @@ public class UiDashboardController implements Initializable {
         ticketLabel.getStyleClass().add("order-ticket-id");
 
         titleBox.getChildren().addAll(customerLabel, ticketLabel);
+        if (sourceOrder != null && sourceOrder.isPriority()) {
+            Label crownIcon = new Label("👑");
+            crownIcon.setStyle("-fx-font-size: 14px;");
+            titleBox.getChildren().add(crownIcon);
+        }
 
         Label itemsLabel = new Label(items);
         itemsLabel.getStyleClass().add("order-items");
@@ -5075,6 +5463,11 @@ public class UiDashboardController implements Initializable {
         typeLabel.getStyleClass().addAll("order-type-badge", type.toLowerCase());
 
         metaBox.getChildren().addAll(timeLabel, typeLabel);
+        if (sourceOrder != null && sourceOrder.isPriority()) {
+            Label prioBadge = new Label("👑 PRIORITY");
+            prioBadge.getStyleClass().add("priority-badge-gold");
+            metaBox.getChildren().add(prioBadge);
+        }
 
         centerBox.getChildren().addAll(titleBox, itemsLabel, metaBox);
 
@@ -5116,26 +5509,47 @@ public class UiDashboardController implements Initializable {
 
         card.getChildren().addAll(iconBox, centerBox, spacer, rightBox);
 
-        // Make card clickable: open billing view with this order loaded
+        // Make card clickable & right-clickable for Priority Context Menu
         card.setStyle("-fx-cursor: hand;");
-        card.setOnMouseClicked(e -> openOrderInBilling(sourceOrder));
+        card.setOnMouseClicked(e -> {
+            if (e.getButton() == javafx.scene.input.MouseButton.SECONDARY) {
+                showOrderContextMenu(sourceOrder, card, e.getScreenX(), e.getScreenY());
+            } else {
+                openOrderInBilling(sourceOrder);
+            }
+        });
+        card.setOnContextMenuRequested(e -> {
+            showOrderContextMenu(sourceOrder, card, e.getScreenX(), e.getScreenY());
+            e.consume();
+        });
 
         runningOrdersContainer.getChildren().add(card);
     }
 
     private void loadPlatformOrders() {
-        UUID restaurantId = TenantContext.getRestaurantId();
+        UUID rid = TenantContext.getRestaurantId();
+        if (rid == null) {
+            rid = getActiveRestaurantId();
+        }
+        final UUID restaurantId = rid;
         CompletableFuture.runAsync(() -> {
             TenantContext.setRestaurantId(restaurantId);
             try {
                 var activeOrders = orderRepository.findByRestaurantIdAndStatusNotIn(restaurantId,
                         java.util.Arrays.asList(OrderStatus.PAID, OrderStatus.CANCELLED));
+                if (activeOrders.isEmpty()) {
+                    activeOrders = orderRepository.findAll().stream()
+                            .filter(o -> o.getStatus() != OrderStatus.PAID && o.getStatus() != OrderStatus.CANCELLED)
+                            .toList();
+                }
 
                 List<Order> platformOrders = activeOrders.stream()
-                        .filter(o -> o.getSource() != null && (o.getSource().toUpperCase().contains("ZOMATO") ||
-                                o.getSource().toUpperCase().contains("SWIGGY") ||
-                                o.getSource().toUpperCase().contains("ONLINE")))
-                        .sorted((o1, o2) -> getOrderStartTimeFallback(o2).compareTo(getOrderStartTimeFallback(o1)))
+                        .filter(this::isPlatformOrder)
+                        .sorted((o1, o2) -> {
+                            int pComp = Boolean.compare(o2.isPriority(), o1.isPriority());
+                            if (pComp != 0) return pComp;
+                            return getOrderStartTimeFallback(o2).compareTo(getOrderStartTimeFallback(o1));
+                        })
                         .toList();
 
                 List<UUID> orderIds = platformOrders.stream().map(Order::getId).toList();
@@ -5314,13 +5728,20 @@ public class UiDashboardController implements Initializable {
     }
 
     private void loadStockOut() {
-        UUID restaurantId = TenantContext.getRestaurantId();
+        UUID rid = TenantContext.getRestaurantId();
+        if (rid == null) {
+            rid = getActiveRestaurantId();
+        }
+        final UUID restaurantId = rid;
         CompletableFuture.runAsync(() -> {
             TenantContext.setRestaurantId(restaurantId);
             try {
                 var menuItems = menuRepository.findByRestaurantIdAndIsDeletedFalse(restaurantId);
                 List<MenuItem> unavailableItems = menuItems.stream()
-                        .filter(item -> !item.isAvailable())
+                        .filter(item -> !item.isAvailable() && item.getName() != null 
+                                && !item.getName().startsWith("↳ ") 
+                                && !"Addon".equalsIgnoreCase(item.getCategoryName()) 
+                                && !item.getName().toLowerCase().startsWith("addon:"))
                         .toList();
 
                 Platform.runLater(() -> {
@@ -5373,27 +5794,50 @@ public class UiDashboardController implements Initializable {
         stockOutContainer.getChildren().add(row);
     }
 
+    private boolean isPlatformOrder(Order o) {
+        if (o == null || o.getSource() == null) return false;
+        String src = o.getSource().toUpperCase().trim();
+        return src.contains("ZOMATO") || 
+               src.contains("SWIGGY") || 
+               src.contains("ONLINE") || 
+               src.contains("QR") || 
+               src.contains("PLATFORM") || 
+               src.contains("UBER") || 
+               src.contains("DUNZO") || 
+               src.contains("FOODPANDA");
+    }
+
     private void loadPlatformStats() {
-        UUID restaurantId = TenantContext.getRestaurantId();
+        UUID rid = TenantContext.getRestaurantId();
+        if (rid == null) {
+            rid = getActiveRestaurantId();
+        }
+        final UUID restaurantId = rid;
         CompletableFuture.runAsync(() -> {
             TenantContext.setRestaurantId(restaurantId);
             try {
                 var activeOrders = orderRepository.findByRestaurantIdAndStatusNotIn(restaurantId,
                         java.util.Arrays.asList(OrderStatus.PAID, OrderStatus.CANCELLED));
+                if (activeOrders.isEmpty()) {
+                    activeOrders = orderRepository.findAll().stream()
+                            .filter(o -> o.getStatus() != OrderStatus.PAID && o.getStatus() != OrderStatus.CANCELLED)
+                            .toList();
+                }
 
                 List<Order> platformActiveOrders = activeOrders.stream()
-                        .filter(o -> o.getSource() != null && (o.getSource().toUpperCase().contains("ZOMATO") ||
-                                o.getSource().toUpperCase().contains("SWIGGY") ||
-                                o.getSource().toUpperCase().contains("ONLINE")))
+                        .filter(this::isPlatformOrder)
                         .toList();
 
                 java.time.LocalDateTime startOfToday = java.time.LocalDate.now().atStartOfDay();
-                // Optimized query: only fetch today's orders
                 var todaysOrders = orderRepository.findByRestaurantIdAndStartedAtAfter(restaurantId, startOfToday);
+                if (todaysOrders.isEmpty()) {
+                    todaysOrders = orderRepository.findAll().stream()
+                            .filter(o -> o.getStartedAt() != null && o.getStartedAt().isAfter(startOfToday))
+                            .toList();
+                }
+
                 List<Order> platformTodayOrders = todaysOrders.stream()
-                        .filter(o -> o.getSource() != null && (o.getSource().toUpperCase().contains("ZOMATO") ||
-                                o.getSource().toUpperCase().contains("SWIGGY") ||
-                                o.getSource().toUpperCase().contains("ONLINE")))
+                        .filter(this::isPlatformOrder)
                         .toList();
 
                 Platform.runLater(() -> {
@@ -5437,13 +5881,17 @@ public class UiDashboardController implements Initializable {
     private void cleanupMockOrders() {
         try {
             List<String> mockOrderNumbers = List.of("#1089", "#1088", "#1087", "#1086", "#1085", "#1084", "#1083");
+            List<String> mockCustomers = List.of("Adithyan", "Arjun", "Neha S.", "Vikram", "Sarah M.", "Rahul", "Deepa");
             List<Order> allOrders = orderRepository.findAll();
             for (Order order : allOrders) {
-                if (mockOrderNumbers.contains(order.getOrderNumber())) {
+                if ((order.getOrderNumber() != null && mockOrderNumbers.contains(order.getOrderNumber())) ||
+                    (order.getCustomerName() != null && mockCustomers.contains(order.getCustomerName()))) {
                     List<KOT> kots = kotRepository.findByOrderId(order.getId());
-                    kotRepository.deleteAll(kots);
+                    for (KOT kot : kots) {
+                        kotRepository.delete(kot);
+                    }
                     orderRepository.delete(order);
-                    System.out.println("🗑️ Cleaned up mock order: " + order.getOrderNumber());
+                    System.out.println("🗑️ Permanently purged dummy mock order: " + order.getOrderNumber());
                 }
             }
         } catch (Exception e) {
@@ -5451,249 +5899,26 @@ public class UiDashboardController implements Initializable {
         }
     }
 
-    // --- DATABASE SEEDER FOR MOCK ORDERS ---
-    private void ensureMockOrdersExist() {
-        try {
-            var existingOrders = orderRepository.findAll();
-            boolean has1089 = existingOrders.stream().anyMatch(o -> "#1089".equals(o.getOrderNumber()));
-            if (!has1089) {
-                // Order #1089
-                Order o1089 = new Order();
-                o1089.setRestaurantId(TenantContext.getRestaurantId());
-                o1089.setOrderNumber("#1089");
-                o1089.setType(OrderType.DINE_IN);
-                o1089.setSource("DIRECT");
-                o1089.setStatus(OrderStatus.OPEN);
-                o1089.setTableName("Table 12");
-                o1089.setCustomerName("Adithyan");
-                o1089.setSubTotal(new BigDecimal("830.00"));
-                o1089.setCgst(new BigDecimal("20.75"));
-                o1089.setSgst(new BigDecimal("20.75"));
-                o1089.setGrandTotal(new BigDecimal("871.50"));
-                o1089.setStartedAt(LocalDateTime.now().minusMinutes(8));
-                o1089 = orderRepository.save(o1089);
-
-                KOT kot1089 = new KOT();
-                kot1089.setKotNumber("KOT-1089");
-                kot1089.setOrderId(o1089.getId());
-                kot1089.setTableId(UUID.randomUUID());
-                kot1089.setTableName("Table 12");
-                kot1089.setOverallStatus(KOTStatus.PREPARING);
-                kot1089.setNotes("Less Spicy on Paneer Tikka. Veg Biryani without onions.");
-                kot1089.setRestaurantId(TenantContext.getRestaurantId());
-
-                KOTItem item1 = new KOTItem(UUID.randomUUID(), "Paneer Tikka", 1, "Less Spicy", KOTStatus.PREPARING);
-                item1.setRestaurantId(TenantContext.getRestaurantId());
-                KOTItem item2 = new KOTItem(UUID.randomUUID(), "Veg Biryani", 1, "No Onion", KOTStatus.PREPARING);
-                item2.setRestaurantId(TenantContext.getRestaurantId());
-                KOTItem item3 = new KOTItem(UUID.randomUUID(), "Garlic Naan", 2, "", KOTStatus.PREPARING);
-                item3.setRestaurantId(TenantContext.getRestaurantId());
-                KOTItem item4 = new KOTItem(UUID.randomUUID(), "Masala Papad", 1, "", KOTStatus.PREPARING);
-                item4.setRestaurantId(TenantContext.getRestaurantId());
-                KOTItem item5 = new KOTItem(UUID.randomUUID(), "Coke (Can)", 2, "", KOTStatus.PREPARING);
-                item5.setRestaurantId(TenantContext.getRestaurantId());
-
-                kot1089.getItems().addAll(List.of(item1, item2, item3, item4, item5));
-                kotRepository.save(kot1089);
-
-                // Order #1088
-                Order o1088 = new Order();
-                o1088.setRestaurantId(TenantContext.getRestaurantId());
-                o1088.setOrderNumber("#1088");
-                o1088.setType(OrderType.DELIVERY);
-                o1088.setSource("SWIGGY");
-                o1088.setStatus(OrderStatus.BILLED);
-                o1088.setCustomerName("Neha S.");
-                o1088.setSubTotal(new BigDecimal("580.00"));
-                o1088.setCgst(new BigDecimal("14.50"));
-                o1088.setSgst(new BigDecimal("14.50"));
-                o1088.setGrandTotal(new BigDecimal("609.00"));
-                o1088.setStartedAt(LocalDateTime.now().minusMinutes(15));
-                o1088 = orderRepository.save(o1088);
-
-                KOT kot1088 = new KOT();
-                kot1088.setKotNumber("KOT-1088");
-                kot1088.setOrderId(o1088.getId());
-                kot1088.setTableId(UUID.randomUUID());
-                kot1088.setTableName("Swiggy");
-                kot1088.setOverallStatus(KOTStatus.READY);
-                kot1088.setRestaurantId(TenantContext.getRestaurantId());
-
-                KOTItem item6 = new KOTItem(UUID.randomUUID(), "Veg Biryani", 1, "", KOTStatus.READY);
-                item6.setRestaurantId(TenantContext.getRestaurantId());
-                KOTItem item7 = new KOTItem(UUID.randomUUID(), "Paneer Butter Masala", 1, "", KOTStatus.READY);
-                item7.setRestaurantId(TenantContext.getRestaurantId());
-                KOTItem item8 = new KOTItem(UUID.randomUUID(), "Garlic Naan", 1, "", KOTStatus.READY);
-                item8.setRestaurantId(TenantContext.getRestaurantId());
-
-                kot1088.getItems().addAll(List.of(item6, item7, item8));
-                kotRepository.save(kot1088);
-
-                // Order #1087
-                Order o1087 = new Order();
-                o1087.setRestaurantId(TenantContext.getRestaurantId());
-                o1087.setOrderNumber("#1087");
-                o1087.setType(OrderType.PICK_UP);
-                o1087.setSource("DIRECT");
-                o1087.setStatus(OrderStatus.PAID);
-                o1087.setTableName("Counter 2");
-                o1087.setCustomerName("Vikram");
-                o1087.setSubTotal(new BigDecimal("340.00"));
-                o1087.setCgst(new BigDecimal("8.50"));
-                o1087.setSgst(new BigDecimal("8.50"));
-                o1087.setGrandTotal(new BigDecimal("357.00"));
-                o1087.setStartedAt(LocalDateTime.now().minusMinutes(25));
-                o1087 = orderRepository.save(o1087);
-
-                KOT kot1087 = new KOT();
-                kot1087.setKotNumber("KOT-1087");
-                kot1087.setOrderId(o1087.getId());
-                kot1087.setTableId(UUID.randomUUID());
-                kot1087.setTableName("Counter 2");
-                kot1087.setOverallStatus(KOTStatus.SERVED);
-                kot1087.setRestaurantId(TenantContext.getRestaurantId());
-
-                KOTItem item9 = new KOTItem(UUID.randomUUID(), "Hakka Noodles", 1, "", KOTStatus.SERVED);
-                item9.setRestaurantId(TenantContext.getRestaurantId());
-                KOTItem item10 = new KOTItem(UUID.randomUUID(), "French Fries", 1, "", KOTStatus.SERVED);
-                item10.setRestaurantId(TenantContext.getRestaurantId());
-
-                kot1087.getItems().addAll(List.of(item9, item10));
-                kotRepository.save(kot1087);
-
-                // Order #1086
-                Order o1086 = new Order();
-                o1086.setRestaurantId(TenantContext.getRestaurantId());
-                o1086.setOrderNumber("#1086");
-                o1086.setType(OrderType.DINE_IN);
-                o1086.setSource("DIRECT");
-                o1086.setStatus(OrderStatus.OPEN);
-                o1086.setTableName("Table 3");
-                o1086.setCustomerName("Arjun");
-                o1086.setSubTotal(new BigDecimal("1060.00"));
-                o1086.setCgst(new BigDecimal("26.50"));
-                o1086.setSgst(new BigDecimal("26.50"));
-                o1086.setGrandTotal(new BigDecimal("1113.00"));
-                o1086.setStartedAt(LocalDateTime.now().minusMinutes(12));
-                o1086 = orderRepository.save(o1086);
-
-                KOT kot1086 = new KOT();
-                kot1086.setKotNumber("KOT-1086");
-                kot1086.setOrderId(o1086.getId());
-                kot1086.setTableId(UUID.randomUUID());
-                kot1086.setTableName("Table 3");
-                kot1086.setOverallStatus(KOTStatus.PREPARING);
-                kot1086.setRestaurantId(TenantContext.getRestaurantId());
-                KOTItem item11 = new KOTItem(UUID.randomUUID(), "Butter Chicken Masala", 2, "", KOTStatus.PREPARING);
-                item11.setRestaurantId(TenantContext.getRestaurantId());
-                KOTItem item12 = new KOTItem(UUID.randomUUID(), "Garlic Naan", 1, "", KOTStatus.PREPARING);
-                item12.setRestaurantId(TenantContext.getRestaurantId());
-                kot1086.getItems().addAll(List.of(item11, item12));
-                kotRepository.save(kot1086);
-
-                // Order #1085
-                Order o1085 = new Order();
-                o1085.setRestaurantId(TenantContext.getRestaurantId());
-                o1085.setOrderNumber("#1085");
-                o1085.setType(OrderType.DELIVERY);
-                o1085.setSource("ZOMATO");
-                o1085.setStatus(OrderStatus.OPEN);
-                o1085.setCustomerName("Sarah M.");
-                o1085.setSubTotal(new BigDecimal("620.00"));
-                o1085.setCgst(new BigDecimal("15.50"));
-                o1085.setSgst(new BigDecimal("15.50"));
-                o1085.setGrandTotal(new BigDecimal("651.00"));
-                o1085.setStartedAt(LocalDateTime.now().minusMinutes(32));
-                o1085 = orderRepository.save(o1085);
-
-                KOT kot1085 = new KOT();
-                kot1085.setKotNumber("KOT-1085");
-                kot1085.setOrderId(o1085.getId());
-                kot1085.setTableId(UUID.randomUUID());
-                kot1085.setTableName("Zomato");
-                kot1085.setOverallStatus(KOTStatus.PREPARING);
-                kot1085.setRestaurantId(TenantContext.getRestaurantId());
-                KOTItem item13 = new KOTItem(UUID.randomUUID(), "Chilli Paneer", 2, "", KOTStatus.PREPARING);
-                item13.setRestaurantId(TenantContext.getRestaurantId());
-                KOTItem item14 = new KOTItem(UUID.randomUUID(), "French Fries", 1, "", KOTStatus.PREPARING);
-                item14.setRestaurantId(TenantContext.getRestaurantId());
-                kot1085.getItems().addAll(List.of(item13, item14));
-                kotRepository.save(kot1085);
-
-                // Order #1084
-                Order o1084 = new Order();
-                o1084.setRestaurantId(TenantContext.getRestaurantId());
-                o1084.setOrderNumber("#1084");
-                o1084.setType(OrderType.DINE_IN);
-                o1084.setSource("DIRECT");
-                o1084.setStatus(OrderStatus.PAID);
-                o1084.setTableName("Table 5");
-                o1084.setCustomerName("Rahul");
-                o1084.setSubTotal(new BigDecimal("840.00"));
-                o1084.setCgst(new BigDecimal("21.00"));
-                o1084.setSgst(new BigDecimal("21.00"));
-                o1084.setGrandTotal(new BigDecimal("882.00"));
-                o1084.setStartedAt(LocalDateTime.now().minusMinutes(48));
-                o1084 = orderRepository.save(o1084);
-
-                KOT kot1084 = new KOT();
-                kot1084.setKotNumber("KOT-1084");
-                kot1084.setOrderId(o1084.getId());
-                kot1084.setTableId(UUID.randomUUID());
-                kot1084.setTableName("Table 5");
-                kot1084.setOverallStatus(KOTStatus.SERVED);
-                kot1084.setRestaurantId(TenantContext.getRestaurantId());
-                KOTItem item15 = new KOTItem(UUID.randomUUID(), "Veg Manchurian", 3, "", KOTStatus.SERVED);
-                item15.setRestaurantId(TenantContext.getRestaurantId());
-                KOTItem item16 = new KOTItem(UUID.randomUUID(), "French Fries", 2, "", KOTStatus.SERVED);
-                item16.setRestaurantId(TenantContext.getRestaurantId());
-                kot1084.getItems().addAll(List.of(item15, item16));
-                kotRepository.save(kot1084);
-
-                // Order #1083
-                Order o1083 = new Order();
-                o1083.setRestaurantId(TenantContext.getRestaurantId());
-                o1083.setOrderNumber("#1083");
-                o1083.setType(OrderType.PICK_UP);
-                o1083.setSource("DIRECT");
-                o1083.setStatus(OrderStatus.CANCELLED);
-                o1083.setTableName("Counter 1");
-                o1083.setCustomerName("Deepa");
-                o1083.setSubTotal(new BigDecimal("200.00"));
-                o1083.setCgst(new BigDecimal("5.00"));
-                o1083.setSgst(new BigDecimal("5.00"));
-                o1083.setGrandTotal(new BigDecimal("210.00"));
-                o1083.setStartedAt(LocalDateTime.now().minusHours(1));
-                o1083 = orderRepository.save(o1083);
-
-                KOT kot1083 = new KOT();
-                kot1083.setKotNumber("KOT-1083");
-                kot1083.setOrderId(o1083.getId());
-                kot1083.setTableId(UUID.randomUUID());
-                kot1083.setTableName("Counter 1");
-                kot1083.setOverallStatus(KOTStatus.CANCELLED);
-                kot1083.setRestaurantId(TenantContext.getRestaurantId());
-                KOTItem item17 = new KOTItem(UUID.randomUUID(), "Spring Rolls", 1, "", KOTStatus.CANCELLED);
-                item17.setRestaurantId(TenantContext.getRestaurantId());
-                kot1083.getItems().add(item17);
-                kotRepository.save(kot1083);
-            }
-        } catch (Exception e) {
-            System.out.println("Failed to seed mock orders: " + e.getMessage());
-        }
-    }
-
     @FXML
     public void loadOrdersToUi() {
-        UUID restaurantId = TenantContext.getRestaurantId();
+        UUID rid = TenantContext.getRestaurantId();
+        if (rid == null) {
+            rid = getActiveRestaurantId();
+        }
+        final UUID restaurantId = rid;
         CompletableFuture.runAsync(() -> {
             TenantContext.setRestaurantId(restaurantId);
             try {
-                // Fetch only today's orders for the restaurant
                 LocalDateTime startOfToday = java.time.LocalDate.now().atStartOfDay();
-                var allOrders = orderRepository.findByRestaurantIdAndStartedAtAfter(restaurantId, startOfToday).stream()
-                        .sorted((a, b) -> b.getStartedAt().compareTo(a.getStartedAt())) // descending
+                List<Order> fetchedOrders = orderRepository.findByRestaurantIdAndStartedAtAfter(restaurantId, startOfToday).stream()
+                        .sorted((a, b) -> getOrderStartTimeFallback(b).compareTo(getOrderStartTimeFallback(a)))
                         .toList();
+                if (fetchedOrders.isEmpty()) {
+                    fetchedOrders = orderRepository.findAll().stream()
+                            .sorted((a, b) -> getOrderStartTimeFallback(b).compareTo(getOrderStartTimeFallback(a)))
+                            .toList();
+                }
+                final List<Order> allOrders = fetchedOrders;
 
                 Platform.runLater(() -> {
                     try {
@@ -5806,6 +6031,15 @@ public class UiDashboardController implements Initializable {
                 filtered.add(o);
             }
 
+            // Sort filtered list by priority first, then date
+            filtered.sort((o1, o2) -> {
+                int pComp = Boolean.compare(o2.isPriority(), o1.isPriority());
+                if (pComp != 0) return pComp;
+                LocalDateTime t1 = o1.getStartedAt() != null ? o1.getStartedAt() : LocalDateTime.MIN;
+                LocalDateTime t2 = o2.getStartedAt() != null ? o2.getStartedAt() : LocalDateTime.MIN;
+                return t2.compareTo(t1);
+            });
+
             // Rebuild Left side table list
             if (ordersListContainer != null) {
                 ordersListContainer.getChildren().clear();
@@ -5898,16 +6132,27 @@ public class UiDashboardController implements Initializable {
         col6.setHgrow(Priority.ALWAYS);
         row.getColumnConstraints().addAll(col1, col2, col3, col4, col5, col6);
 
-        // Selected State highlight
+        // Selected & Priority State highlight
+        if (order.isPriority()) {
+            row.getStyleClass().add("priority-order-row");
+        }
         if (selectedOrder != null && selectedOrder.getId().equals(order.getId())) {
             row.getStyleClass().add("selected");
         }
 
-        // Col 1: Order ID
+        // Col 1: Order ID & Crown symbol
+        HBox idBox = new HBox(4);
+        idBox.setAlignment(Pos.CENTER_LEFT);
         Label idLbl = new Label(order.getOrderNumber() != null ? order.getOrderNumber()
                 : "#" + order.getId().toString().substring(0, 4));
         idLbl.setStyle("-fx-font-weight: bold; -fx-text-fill: #1E293B; -fx-font-size: 14px;");
-        GridPane.setColumnIndex(idLbl, 0);
+        idBox.getChildren().add(idLbl);
+        if (order.isPriority()) {
+            Label crownIcon = new Label("👑");
+            crownIcon.setStyle("-fx-font-size: 13px;");
+            idBox.getChildren().add(crownIcon);
+        }
+        GridPane.setColumnIndex(idBox, 0);
 
         // Col 2: Source / Table
         HBox sourceBox = new HBox();
@@ -6001,11 +6246,19 @@ public class UiDashboardController implements Initializable {
         amtLbl.setStyle("-fx-font-weight: bold; -fx-text-fill: #1E293B; -fx-font-size: 14px;");
         GridPane.setColumnIndex(amtLbl, 5);
 
-        row.getChildren().addAll(idLbl, sourceBox, custLbl, statusPill, timeBox, amtLbl);
+        row.getChildren().addAll(idBox, sourceBox, custLbl, statusPill, timeBox, amtLbl);
 
         row.setOnMouseClicked(e -> {
-            selectedOrder = order;
-            loadOrdersToUi();
+            if (e.getButton() == javafx.scene.input.MouseButton.SECONDARY) {
+                showOrderContextMenu(order, row, e.getScreenX(), e.getScreenY());
+            } else {
+                selectedOrder = order;
+                loadOrdersToUi();
+            }
+        });
+        row.setOnContextMenuRequested(e -> {
+            showOrderContextMenu(order, row, e.getScreenX(), e.getScreenY());
+            e.consume();
         });
 
         if (selectedOrder != null && selectedOrder.getId().equals(order.getId())) {
@@ -6981,9 +7234,11 @@ public class UiDashboardController implements Initializable {
             return;
 
         try {
+            UUID rid = currentEditingOrder.getRestaurantId() != null ? currentEditingOrder.getRestaurantId() : getActiveRestaurantId();
             List<KOT> kots = kotRepository.findByOrderId(currentEditingOrder.getId());
             if (kots.isEmpty()) {
                 KOT newKot = new KOT();
+                newKot.setRestaurantId(rid);
                 newKot.setOrderId(currentEditingOrder.getId());
                 newKot.setKotNumber("KOT-" + currentEditingOrder.getOrderNumber());
                 newKot.setTableId(currentEditingOrder.getTableId() != null ? currentEditingOrder.getTableId()
@@ -6994,11 +7249,15 @@ public class UiDashboardController implements Initializable {
             }
 
             KOT primaryKot = kots.get(0);
+            if (primaryKot.getRestaurantId() == null) {
+                primaryKot.setRestaurantId(rid);
+            }
             primaryKot.getItems().clear();
 
             double subtotalVal = 0.0;
             for (EditableItem tempItem : tempEditingItems) {
                 KOTItem kotItem = new KOTItem();
+                kotItem.setRestaurantId(rid);
                 UUID menuItemId = null;
                 try {
                     MenuItem mi = resolveOrCreateMenuItem(tempItem.name,
@@ -7152,6 +7411,73 @@ public class UiDashboardController implements Initializable {
             } catch (Exception e) {
                 System.out.println("Error deleting menu item in bridge: " + e.getMessage());
                 return false;
+            }
+        }
+
+        public String getKdsKotsJson() {
+            try {
+                UUID rid = getActiveRestaurantId();
+                List<KOT> allKots = kotRepository.findByRestaurantIdAndOverallStatusIn(rid, List.of(KOTStatus.PENDING, KOTStatus.PREPARING, KOTStatus.READY));
+                if (allKots.isEmpty()) {
+                    allKots = kotRepository.findAll();
+                }
+
+                List<java.util.Map<String, Object>> result = new ArrayList<>();
+                for (KOT kot : allKots) {
+                    if (kot.getOverallStatus() == KOTStatus.SERVED || kot.getOverallStatus() == KOTStatus.CANCELLED) {
+                        continue;
+                    }
+                    if (kot.getOrderId() != null) {
+                        Order ord = orderRepository.findById(kot.getOrderId()).orElse(null);
+                        if (ord == null || ord.getStatus() == OrderStatus.PAID || ord.getStatus() == OrderStatus.CANCELLED) {
+                            continue;
+                        }
+                    } else {
+                        continue;
+                    }
+
+                    List<java.util.Map<String, Object>> items = new ArrayList<>();
+                    if (kot.getItems() != null) {
+                        for (KOTItem ki : kot.getItems()) {
+                            if (ki.getItemStatus() == KOTStatus.SERVED || ki.getItemStatus() == KOTStatus.CANCELLED) {
+                                continue;
+                            }
+                            java.util.Map<String, Object> im = new java.util.HashMap<>();
+                            im.put("id", ki.getId() != null ? ki.getId().toString() : "");
+                            im.put("menuItemId", ki.getMenuItemId() != null ? ki.getMenuItemId().toString() : "");
+                            im.put("itemName", ki.getItemName());
+                            im.put("name", ki.getItemName() != null ? ki.getItemName() : "");
+                            im.put("quantity", ki.getQuantity());
+                            im.put("qty", ki.getQuantity());
+                            im.put("status", ki.getItemStatus() != null ? ki.getItemStatus().name() : "PENDING");
+                            im.put("specialInstruction", ki.getSpecialInstruction() != null ? ki.getSpecialInstruction() : "");
+                            im.put("modifier", ki.getSpecialInstruction() != null ? ki.getSpecialInstruction() : "");
+                            items.add(im);
+                        }
+                    }
+
+                    if (items.isEmpty()) {
+                        continue;
+                    }
+
+                    java.util.Map<String, Object> map = new java.util.HashMap<>();
+                    Order ord = orderRepository.findById(kot.getOrderId()).orElse(null);
+                    map.put("id", kot.getId().toString());
+                    map.put("kotNumber", kot.getKotNumber());
+                    map.put("orderId", kot.getOrderId() != null ? kot.getOrderId().toString() : "");
+                    map.put("orderNumber", ord != null && ord.getOrderNumber() != null ? ord.getOrderNumber() : (kot.getKotNumber() != null ? kot.getKotNumber() : ""));
+                    map.put("tableName", kot.getTableName() != null ? kot.getTableName() : "Takeaway");
+                    map.put("orderType", ord != null && ord.getType() != null ? ord.getType().name() : "DINE_IN");
+                    map.put("status", kot.getOverallStatus() != null ? kot.getOverallStatus().name() : "PENDING");
+                    map.put("isPriority", ord != null ? ord.isPriority() : false);
+                    map.put("createdAt", kot.getCreatedAt() != null ? kot.getCreatedAt().toString() : "");
+                    map.put("items", items);
+                    result.add(map);
+                }
+                return new ObjectMapper().writeValueAsString(result);
+            } catch (Exception e) {
+                System.out.println("Error serializing KDS KOTs in bridge: " + e.getMessage());
+                return "[]";
             }
         }
 
@@ -7873,6 +8199,604 @@ public class UiDashboardController implements Initializable {
     }
 
     @FXML
+    public void handleOpenSettings(javafx.event.ActionEvent event) {
+        openSettingsDialog();
+    }
+
+    @FXML
+    public void handleOpenSettings() {
+        openSettingsDialog();
+    }
+
+    private void openSettingsDialog() {
+        javafx.scene.control.Dialog<javafx.scene.control.ButtonType> dialog = new javafx.scene.control.Dialog<>();
+        dialog.setTitle("Restaurant Settings & Preferences");
+
+        javafx.scene.control.DialogPane dialogPane = dialog.getDialogPane();
+        dialogPane.getButtonTypes().addAll(javafx.scene.control.ButtonType.OK, javafx.scene.control.ButtonType.CANCEL);
+        dialogPane.setStyle("-fx-background-color: #FFFFFF;");
+
+        javafx.scene.control.Button okBtn = (javafx.scene.control.Button) dialogPane.lookupButton(javafx.scene.control.ButtonType.OK);
+        javafx.scene.control.Button cancelBtn = (javafx.scene.control.Button) dialogPane.lookupButton(javafx.scene.control.ButtonType.CANCEL);
+
+        if (okBtn != null) {
+            okBtn.setText("Save Settings");
+            okBtn.setStyle("-fx-background-color: #0A4F34; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 8px; -fx-padding: 8 18; -fx-cursor: hand;");
+        }
+        if (cancelBtn != null) {
+            cancelBtn.setStyle("-fx-background-color: #F1F5F9; -fx-text-fill: #475569; -fx-font-weight: bold; -fx-background-radius: 8px; -fx-padding: 8 18; -fx-cursor: hand;");
+        }
+
+        VBox mainContainer = new VBox(16);
+        mainContainer.setPadding(new Insets(20));
+        mainContainer.setStyle("-fx-pref-width: 480px; -fx-background-color: #FFFFFF;");
+
+        Label titleLabel = new Label("Surabhi SmartDine — Restaurant Settings");
+        titleLabel.setStyle("-fx-font-size: 18px; -fx-font-weight: 900; -fx-text-fill: #0F172A;");
+
+        UUID rid = TenantContext.getRestaurantId();
+        if (rid == null) rid = getActiveRestaurantId();
+        final UUID restaurantId = rid;
+
+        com.smartdine.coreheart.RestaurantSettings settings = getEffectiveRestaurantSettings(restaurantId);
+
+        com.smartdine.coreheart.SystemConfig config = systemConfigRepository.findAll().stream().findFirst().orElse(new com.smartdine.coreheart.SystemConfig());
+
+        // 1. DELIVERY CHARGES CARD
+        VBox deliveryCard = new VBox(8);
+        deliveryCard.setStyle("-fx-background-color: #F8FAFC; -fx-border-color: #E2E8F0; -fx-border-radius: 10px; -fx-background-radius: 10px; -fx-padding: 12;");
+        
+        javafx.scene.control.CheckBox delCheckBox = new javafx.scene.control.CheckBox("Enable Delivery Charges");
+        delCheckBox.setSelected(settings.isDeliveryChargeEnabled());
+        delCheckBox.setStyle("-fx-font-weight: bold; -fx-font-size: 13px; -fx-text-fill: #1E293B;");
+
+        HBox delFeeRow = new HBox(10);
+        delFeeRow.setAlignment(Pos.CENTER_LEFT);
+        Label delLabel = new Label("Default Delivery Fee (₹):");
+        delLabel.setStyle("-fx-font-size: 12px; -fx-text-fill: #64748B;");
+        javafx.scene.control.TextField delFeeField = new javafx.scene.control.TextField(String.valueOf(settings.getDefaultDeliveryFee()));
+        delFeeField.setStyle("-fx-background-color: #FFFFFF; -fx-border-color: #CBD5E1; -fx-border-radius: 6px; -fx-background-radius: 6px; -fx-padding: 6; -fx-font-size: 13px;");
+        delFeeRow.getChildren().addAll(delLabel, delFeeField);
+        HBox.setHgrow(delFeeField, Priority.ALWAYS);
+
+        deliveryCard.getChildren().addAll(delCheckBox, delFeeRow);
+
+        // 2. PACKING CHARGES CARD
+        VBox packingCard = new VBox(8);
+        packingCard.setStyle("-fx-background-color: #F8FAFC; -fx-border-color: #E2E8F0; -fx-border-radius: 10px; -fx-background-radius: 10px; -fx-padding: 12;");
+        
+        javafx.scene.control.CheckBox packCheckBox = new javafx.scene.control.CheckBox("Enable Packing Charges");
+        packCheckBox.setSelected(settings.isPackingChargeEnabled());
+        packCheckBox.setStyle("-fx-font-weight: bold; -fx-font-size: 13px; -fx-text-fill: #1E293B;");
+
+        HBox packFeeRow = new HBox(10);
+        packFeeRow.setAlignment(Pos.CENTER_LEFT);
+        Label packLabel = new Label("Default Packing Fee (₹):");
+        packLabel.setStyle("-fx-font-size: 12px; -fx-text-fill: #64748B;");
+        javafx.scene.control.TextField packFeeField = new javafx.scene.control.TextField(String.valueOf(settings.getDefaultPackingFee()));
+        packFeeField.setStyle("-fx-background-color: #FFFFFF; -fx-border-color: #CBD5E1; -fx-border-radius: 6px; -fx-background-radius: 6px; -fx-padding: 6; -fx-font-size: 13px;");
+        packFeeRow.getChildren().addAll(packLabel, packFeeField);
+        HBox.setHgrow(packFeeField, Priority.ALWAYS);
+
+        packingCard.getChildren().addAll(packCheckBox, packFeeRow);
+
+        // 3. TAX SETTINGS CARD (CGST & SGST)
+        VBox taxCard = new VBox(8);
+        taxCard.setStyle("-fx-background-color: #F8FAFC; -fx-border-color: #E2E8F0; -fx-border-radius: 10px; -fx-background-radius: 10px; -fx-padding: 12;");
+        
+        javafx.scene.control.CheckBox taxCheckBox = new javafx.scene.control.CheckBox("Enable Tax (CGST & SGST)");
+        taxCheckBox.setSelected(settings.isTaxEnabled());
+        taxCheckBox.setStyle("-fx-font-weight: bold; -fx-font-size: 13px; -fx-text-fill: #1E293B;");
+
+        HBox taxRow = new HBox(12);
+        VBox cgstBox = new VBox(4);
+        Label cgstLabel = new Label("CGST Rate (%)");
+        cgstLabel.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #64748B;");
+        javafx.scene.control.TextField cgstField = new javafx.scene.control.TextField(config.getCgstRate() != null ? config.getCgstRate().toString() : "2.5");
+        cgstField.setStyle("-fx-background-color: #FFFFFF; -fx-border-color: #CBD5E1; -fx-border-radius: 6px; -fx-background-radius: 6px; -fx-padding: 6; -fx-font-size: 13px;");
+        cgstBox.getChildren().addAll(cgstLabel, cgstField);
+        HBox.setHgrow(cgstBox, Priority.ALWAYS);
+
+        VBox sgstBox = new VBox(4);
+        Label sgstLabel = new Label("SGST Rate (%)");
+        sgstLabel.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #64748B;");
+        javafx.scene.control.TextField sgstField = new javafx.scene.control.TextField(config.getSgstRate() != null ? config.getSgstRate().toString() : "2.5");
+        sgstField.setStyle("-fx-background-color: #FFFFFF; -fx-border-color: #CBD5E1; -fx-border-radius: 6px; -fx-background-radius: 6px; -fx-padding: 6; -fx-font-size: 13px;");
+        sgstBox.getChildren().addAll(sgstLabel, sgstField);
+        HBox.setHgrow(sgstBox, Priority.ALWAYS);
+
+        taxRow.getChildren().addAll(cgstBox, sgstBox);
+        taxCard.getChildren().addAll(taxCheckBox, taxRow);
+
+        // 4. ADDON ITEMS MANAGER SECTION
+        VBox addonCard = new VBox(10);
+        addonCard.setStyle("-fx-background-color: #F8FAFC; -fx-border-color: #E2E8F0; -fx-border-radius: 10px; -fx-background-radius: 10px; -fx-padding: 12;");
+
+        Label addonTitle = new Label("Addon Items & Extras Catalog");
+        addonTitle.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #0F172A;");
+
+        FlowPane addonsListPane = new FlowPane();
+        addonsListPane.setHgap(6);
+        addonsListPane.setVgap(6);
+
+        Runnable refreshAddonChips = () -> {
+            addonsListPane.getChildren().clear();
+            List<com.smartdine.coreheart.AddonItem> currentAddons = addonItemRepository.findByRestaurantId(restaurantId);
+            for (com.smartdine.coreheart.AddonItem addon : currentAddons) {
+                HBox chip = new HBox(6);
+                chip.setAlignment(Pos.CENTER_LEFT);
+                chip.setStyle("-fx-background-color: #FFFFFF; -fx-border-color: #CBD5E1; -fx-border-radius: 14px; -fx-background-radius: 14px; -fx-padding: 4 10;");
+
+                Label lbl = new Label(addon.getName() + " (₹" + addon.getPrice() + ")");
+                lbl.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #334155;");
+
+                Button delBtn = new Button("×");
+                delBtn.setStyle("-fx-background-color: transparent; -fx-text-fill: #EF4444; -fx-font-weight: bold; -fx-padding: 0 2; -fx-cursor: hand;");
+                delBtn.setOnAction(e -> {
+                    addonItemRepository.delete(addon);
+                    addonItemRepository.flush();
+                    activationService.syncAddonsToDisk(restaurantId);
+                    addonsListPane.getChildren().remove(chip);
+                });
+
+                chip.getChildren().addAll(lbl, delBtn);
+                addonsListPane.getChildren().add(chip);
+            }
+        };
+
+        refreshAddonChips.run();
+
+        // Add new Addon row
+        HBox addAddonRow = new HBox(8);
+        addAddonRow.setAlignment(Pos.CENTER_LEFT);
+
+        javafx.scene.control.TextField addonNameField = new javafx.scene.control.TextField();
+        addonNameField.setPromptText("Addon Name (e.g. Cheese)");
+        addonNameField.setStyle("-fx-background-color: #FFFFFF; -fx-border-color: #CBD5E1; -fx-border-radius: 6px; -fx-background-radius: 6px; -fx-padding: 6; -fx-font-size: 12px;");
+        HBox.setHgrow(addonNameField, Priority.ALWAYS);
+
+        javafx.scene.control.TextField addonPriceField = new javafx.scene.control.TextField();
+        addonPriceField.setPromptText("Price (₹)");
+        addonPriceField.setPrefWidth(90);
+        addonPriceField.setStyle("-fx-background-color: #FFFFFF; -fx-border-color: #CBD5E1; -fx-border-radius: 6px; -fx-background-radius: 6px; -fx-padding: 6; -fx-font-size: 12px;");
+
+        Button addAddonBtn = new Button("+ Add");
+        addAddonBtn.setStyle("-fx-background-color: #10B981; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6px; -fx-padding: 6 12; -fx-cursor: hand;");
+        addAddonBtn.setOnAction(e -> {
+            String name = addonNameField.getText() != null ? addonNameField.getText().trim() : "";
+            String priceStr = addonPriceField.getText() != null ? addonPriceField.getText().trim() : "0";
+            if (!name.isEmpty()) {
+                try {
+                    BigDecimal price = new BigDecimal(priceStr);
+                    com.smartdine.coreheart.AddonItem item = new com.smartdine.coreheart.AddonItem(restaurantId, name, price);
+                    addonItemRepository.saveAndFlush(item);
+                    activationService.syncAddonsToDisk(restaurantId);
+                    addonNameField.clear();
+                    addonPriceField.clear();
+                    refreshAddonChips.run();
+                } catch (Exception ex) {
+                    showAlert("Addon Error", "Please enter a valid price amount.");
+                }
+            }
+        });
+
+        addAddonRow.getChildren().addAll(addonNameField, addonPriceField, addAddonBtn);
+        addonCard.getChildren().addAll(addonTitle, addonsListPane, addAddonRow);
+
+        mainContainer.getChildren().addAll(titleLabel, deliveryCard, packingCard, taxCard, addonCard);
+
+        javafx.scene.control.ScrollPane scrollPane = new javafx.scene.control.ScrollPane(mainContainer);
+        scrollPane.setFitToWidth(true);
+        scrollPane.setStyle("-fx-background-color: transparent; -fx-background: transparent;");
+        scrollPane.setPrefHeight(500);
+
+        dialogPane.setContent(scrollPane);
+
+        dialog.showAndWait().ifPresent(btn -> {
+            if (btn == javafx.scene.control.ButtonType.OK) {
+                try {
+                    settings.setRestaurantId(restaurantId);
+                    settings.setDeliveryChargeEnabled(delCheckBox.isSelected());
+                    settings.setDefaultDeliveryFee(Double.parseDouble(delFeeField.getText().trim()));
+                    settings.setPackingChargeEnabled(packCheckBox.isSelected());
+                    settings.setDefaultPackingFee(Double.parseDouble(packFeeField.getText().trim()));
+                    settings.setTaxEnabled(taxCheckBox.isSelected());
+                    
+                    BigDecimal cgst = new BigDecimal(cgstField.getText().trim());
+                    BigDecimal sgst = new BigDecimal(sgstField.getText().trim());
+                    settings.setTaxRatePercentage(cgst.doubleValue());
+
+                    config.setRestaurantId(restaurantId);
+                    config.setCgstRate(cgst);
+                    config.setSgstRate(sgst);
+
+                    restaurantSettingsRepository.saveAndFlush(settings);
+                    systemConfigRepository.saveAndFlush(config);
+
+                    if (enableDeliveryChargeCheckBox != null) {
+                        enableDeliveryChargeCheckBox.setSelected(settings.isDeliveryChargeEnabled());
+                    }
+                    if (enablePackingChargeCheckBox != null) {
+                        enablePackingChargeCheckBox.setSelected(settings.isPackingChargeEnabled());
+                    }
+
+                    updateCalculations();
+
+                    showAlert("Settings Saved", "Restaurant Settings, Charges, Taxes, and Addon catalog saved successfully!");
+                } catch (Exception e) {
+                    showAlert("Save Error", "Error saving settings: " + e.getMessage());
+                }
+            }
+        });
+    }
+
+    @FXML
+    public void handleEditModifiers() {
+        openEditModifiersDialog();
+    }
+
+    @FXML
+    public void handleEditModifiers(javafx.event.ActionEvent event) {
+        openEditModifiersDialog();
+    }
+
+    @FXML
+    public void handleOpenAddonsDialog() {
+        openAddonsDialog();
+    }
+
+    @FXML
+    public void handleOpenAddonsDialog(javafx.event.ActionEvent event) {
+        openAddonsDialog();
+    }
+
+    @FXML
+    public void handleDetChangeTable() {
+        openTableSelectionDialog();
+    }
+
+    @FXML
+    public void handleDetChangeTable(javafx.event.ActionEvent event) {
+        openTableSelectionDialog();
+    }
+
+    @FXML
+    public void handleDetAddCustomer() {
+        openCustomerDetailsDialog();
+    }
+
+    @FXML
+    public void handleDetAddCustomer(javafx.event.ActionEvent event) {
+        openCustomerDetailsDialog();
+    }
+
+    @FXML
+    public void handleDetOpenAddonsDialog() {
+        openAddonsDialog();
+    }
+
+    @FXML
+    public void handleDetOpenAddonsDialog(javafx.event.ActionEvent event) {
+        openAddonsDialog();
+    }
+
+    private void openEditModifiersDialog() {
+        javafx.scene.control.Dialog<javafx.scene.control.ButtonType> dialog = new javafx.scene.control.Dialog<>();
+        dialog.setTitle("Quick Modifiers Management");
+
+        javafx.scene.control.DialogPane dialogPane = dialog.getDialogPane();
+        dialogPane.getButtonTypes().addAll(javafx.scene.control.ButtonType.OK, javafx.scene.control.ButtonType.CANCEL);
+        dialogPane.setStyle("-fx-background-color: #FFFFFF;");
+
+        javafx.scene.control.Button okBtn = (javafx.scene.control.Button) dialogPane.lookupButton(javafx.scene.control.ButtonType.OK);
+        javafx.scene.control.Button cancelBtn = (javafx.scene.control.Button) dialogPane.lookupButton(javafx.scene.control.ButtonType.CANCEL);
+
+        if (okBtn != null) {
+            okBtn.setText("Apply Modifiers");
+            okBtn.setStyle("-fx-background-color: #10B981; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 8px; -fx-padding: 8 18; -fx-cursor: hand;");
+        }
+        if (cancelBtn != null) {
+            cancelBtn.setStyle("-fx-background-color: #F1F5F9; -fx-text-fill: #475569; -fx-font-weight: bold; -fx-background-radius: 8px; -fx-padding: 8 18; -fx-cursor: hand;");
+        }
+
+        VBox mainBox = new VBox(14);
+        mainBox.setPadding(new Insets(16));
+        mainBox.setStyle("-fx-background-color: #FFFFFF;");
+
+        Label titleLabel = new Label("Quick Modifiers Management");
+        titleLabel.setStyle("-fx-font-size: 16px; -fx-font-weight: 900; -fx-text-fill: #0F172A;");
+
+        Label descLabel = new Label("Select or manage quick modifier tags for billing:");
+        descLabel.setStyle("-fx-font-size: 12px; -fx-text-fill: #64748B;");
+
+        FlowPane chipsPane = new FlowPane();
+        chipsPane.setHgap(8);
+        chipsPane.setVgap(8);
+
+        Runnable refreshChips = () -> {
+            chipsPane.getChildren().clear();
+            for (String tag : new ArrayList<>(quickModifierMasterList)) {
+                HBox chip = new HBox(6);
+                chip.setAlignment(Pos.CENTER_LEFT);
+                boolean isSelected = activeModifiers.contains(tag);
+                if (isSelected) {
+                    chip.setStyle("-fx-background-color: #DCFCE7; -fx-border-color: #10B981; -fx-border-radius: 16px; -fx-background-radius: 16px; -fx-padding: 5 12;");
+                } else {
+                    chip.setStyle("-fx-background-color: #F8FAFC; -fx-border-color: #E2E8F0; -fx-border-radius: 16px; -fx-background-radius: 16px; -fx-padding: 5 12;");
+                }
+
+                Label lbl = new Label(tag);
+                lbl.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: " + (isSelected ? "#15803D;" : "#334155;"));
+                lbl.setOnMouseClicked(e -> {
+                    if (activeModifiers.contains(tag)) {
+                        activeModifiers.remove(tag);
+                    } else {
+                        activeModifiers.add(tag);
+                    }
+                    chipsPane.getChildren().clear();
+                    for (String t : quickModifierMasterList) {
+                        // refresh
+                    }
+                });
+
+                Button delBtn = new Button("×");
+                delBtn.setStyle("-fx-background-color: transparent; -fx-text-fill: #EF4444; -fx-font-weight: bold; -fx-padding: 0 2; -fx-cursor: hand;");
+                delBtn.setOnAction(e -> {
+                    quickModifierMasterList.remove(tag);
+                    activeModifiers.remove(tag);
+                    chipsPane.getChildren().remove(chip);
+                });
+
+                chip.getChildren().addAll(lbl, delBtn);
+                chipsPane.getChildren().add(chip);
+            }
+        };
+
+        refreshChips.run();
+
+        Label addTagLabel = new Label("Add New Custom Modifier (Short Form):");
+        addTagLabel.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #334155;");
+
+        HBox addRow = new HBox(8);
+        addRow.setAlignment(Pos.CENTER_LEFT);
+
+        javafx.scene.control.TextField tagField = new javafx.scene.control.TextField();
+        tagField.setPromptText("e.g. Less Oil, No Onion, Extra Crispy");
+        tagField.setStyle("-fx-background-color: #F8FAFC; -fx-border-color: #CBD5E1; -fx-border-radius: 8px; -fx-background-radius: 8px; -fx-padding: 8; -fx-font-size: 13px;");
+        HBox.setHgrow(tagField, Priority.ALWAYS);
+
+        Button addBtn = new Button("+ Add Tag");
+        addBtn.setStyle("-fx-background-color: #10B981; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 8px; -fx-padding: 8 14; -fx-cursor: hand;");
+        addBtn.setOnAction(e -> {
+            String val = tagField.getText() != null ? tagField.getText().trim() : "";
+            if (!val.isEmpty()) {
+                if (!quickModifierMasterList.contains(val)) {
+                    quickModifierMasterList.add(val);
+                }
+                if (!activeModifiers.contains(val)) {
+                    activeModifiers.add(val);
+                }
+                tagField.clear();
+                refreshChips.run();
+            }
+        });
+
+        addRow.getChildren().addAll(tagField, addBtn);
+        mainBox.getChildren().addAll(titleLabel, descLabel, chipsPane, new javafx.scene.control.Separator(), addTagLabel, addRow);
+
+        javafx.scene.control.ScrollPane scrollPane = new javafx.scene.control.ScrollPane(mainBox);
+        scrollPane.setFitToWidth(true);
+        scrollPane.setStyle("-fx-background-color: transparent; -fx-background: transparent;");
+        scrollPane.setPrefHeight(280);
+        scrollPane.setMaxHeight(300);
+
+        dialogPane.setContent(scrollPane);
+
+        dialog.showAndWait().ifPresent(btn -> {
+            if (btn == javafx.scene.control.ButtonType.OK) {
+                populateModifiersUi();
+            }
+        });
+    }
+
+    private void openAddonsDialog() {
+        javafx.scene.control.Dialog<javafx.scene.control.ButtonType> dialog = new javafx.scene.control.Dialog<>();
+        dialog.setTitle("Select Addons & Extras");
+
+        javafx.scene.control.DialogPane dialogPane = dialog.getDialogPane();
+        dialogPane.getButtonTypes().addAll(javafx.scene.control.ButtonType.OK, javafx.scene.control.ButtonType.CANCEL);
+        dialogPane.setStyle("-fx-background-color: #FFFFFF;");
+
+        javafx.scene.control.Button okBtn = (javafx.scene.control.Button) dialogPane.lookupButton(javafx.scene.control.ButtonType.OK);
+        javafx.scene.control.Button cancelBtn = (javafx.scene.control.Button) dialogPane.lookupButton(javafx.scene.control.ButtonType.CANCEL);
+
+        if (okBtn != null) {
+            okBtn.setText("Attach Addons");
+            okBtn.setStyle("-fx-background-color: #10B981; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 8px; -fx-padding: 8 18; -fx-cursor: hand;");
+        }
+        if (cancelBtn != null) {
+            cancelBtn.setStyle("-fx-background-color: #F1F5F9; -fx-text-fill: #475569; -fx-font-weight: bold; -fx-background-radius: 8px; -fx-padding: 8 18; -fx-cursor: hand;");
+        }
+
+        VBox mainBox = new VBox(14);
+        mainBox.setPadding(new Insets(16));
+        mainBox.setStyle("-fx-background-color: #FFFFFF;");
+
+        Label titleLabel = new Label("Select Addons & Extras");
+        titleLabel.setStyle("-fx-font-size: 18px; -fx-font-weight: 900; -fx-text-fill: #0F172A;");
+
+        Label descLabel = new Label("Add or subtract addons using '+' and '-' for the current item:");
+        descLabel.setStyle("-fx-font-size: 12px; -fx-text-fill: #64748B;");
+
+        VBox addonsListVBox = new VBox(8);
+
+        UUID rid = TenantContext.getRestaurantId();
+        if (rid == null) rid = getActiveRestaurantId();
+
+        List<com.smartdine.coreheart.AddonItem> dbAddons = addonItemRepository.findByRestaurantId(rid);
+        
+        java.util.Map<String, Integer> selectedQuantities = new java.util.LinkedHashMap<>();
+        java.util.Map<String, BigDecimal> addonPrices = new java.util.LinkedHashMap<>();
+
+        if (dbAddons != null && !dbAddons.isEmpty()) {
+            for (com.smartdine.coreheart.AddonItem addon : dbAddons) {
+                if (addon.isAvailable()) {
+                    selectedQuantities.put(addon.getName(), 0);
+                    addonPrices.put(addon.getName(), addon.getPrice());
+                }
+            }
+        }
+
+        Label totalLabel = new Label("Total Extras: +₹0.00");
+        totalLabel.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #10B981;");
+
+        Runnable updateTotal = () -> {
+            BigDecimal sum = BigDecimal.ZERO;
+            for (java.util.Map.Entry<String, Integer> entry : selectedQuantities.entrySet()) {
+                int qty = entry.getValue();
+                if (qty > 0) {
+                    BigDecimal price = addonPrices.get(entry.getKey());
+                    sum = sum.add(price.multiply(BigDecimal.valueOf(qty)));
+                }
+            }
+            totalLabel.setText("Total Extras: +₹" + sum.setScale(2, java.math.RoundingMode.HALF_UP));
+        };
+
+        for (String addonName : selectedQuantities.keySet()) {
+            BigDecimal price = addonPrices.get(addonName);
+
+            HBox row = new HBox(12);
+            row.setAlignment(Pos.CENTER_LEFT);
+            row.setStyle("-fx-background-color: #F8FAFC; -fx-border-color: #E2E8F0; -fx-border-radius: 8px; -fx-background-radius: 8px; -fx-padding: 8 12;");
+
+            Label nameLbl = new Label(addonName);
+            nameLbl.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #1E293B;");
+            HBox.setHgrow(nameLbl, Priority.ALWAYS);
+            nameLbl.setMaxWidth(Double.MAX_VALUE);
+
+            Label priceLbl = new Label("+₹" + price);
+            priceLbl.setStyle("-fx-font-size: 12px; -fx-text-fill: #64748B;");
+            priceLbl.setMinWidth(75);
+            priceLbl.setPrefWidth(75);
+            priceLbl.setMaxWidth(75);
+            priceLbl.setAlignment(Pos.CENTER_RIGHT);
+
+            Label qtyLbl = new Label("0");
+            qtyLbl.setMinWidth(24);
+            qtyLbl.setPrefWidth(24);
+            qtyLbl.setMaxWidth(24);
+            qtyLbl.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #0F172A; -fx-alignment: center;");
+
+            Button minusBtn = new Button("-");
+            minusBtn.setMinWidth(30);
+            minusBtn.setPrefWidth(30);
+            minusBtn.setMaxWidth(30);
+            minusBtn.setStyle("-fx-background-color: #E2E8F0; -fx-text-fill: #334155; -fx-font-weight: bold; -fx-background-radius: 6px; -fx-padding: 4 0; -fx-alignment: center; -fx-cursor: hand;");
+            
+            Button plusBtn = new Button("+");
+            plusBtn.setMinWidth(30);
+            plusBtn.setPrefWidth(30);
+            plusBtn.setMaxWidth(30);
+            plusBtn.setStyle("-fx-background-color: #10B981; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6px; -fx-padding: 4 0; -fx-alignment: center; -fx-cursor: hand;");
+
+            minusBtn.setOnAction(e -> {
+                int current = selectedQuantities.get(addonName);
+                if (current > 0) {
+                    current--;
+                    selectedQuantities.put(addonName, current);
+                    qtyLbl.setText(String.valueOf(current));
+                    if (current == 0) {
+                        row.setStyle("-fx-background-color: #F8FAFC; -fx-border-color: #E2E8F0; -fx-border-radius: 8px; -fx-background-radius: 8px; -fx-padding: 8 12;");
+                    }
+                    updateTotal.run();
+                }
+            });
+
+            plusBtn.setOnAction(e -> {
+                int current = selectedQuantities.get(addonName);
+                current++;
+                selectedQuantities.put(addonName, current);
+                qtyLbl.setText(String.valueOf(current));
+                row.setStyle("-fx-background-color: #F0FDF4; -fx-border-color: #10B981; -fx-border-radius: 8px; -fx-background-radius: 8px; -fx-padding: 8 12;");
+                updateTotal.run();
+            });
+
+            HBox stepper = new HBox(6, minusBtn, qtyLbl, plusBtn);
+            stepper.setMinWidth(96);
+            stepper.setPrefWidth(96);
+            stepper.setMaxWidth(96);
+            stepper.setAlignment(Pos.CENTER_RIGHT);
+
+            row.getChildren().addAll(nameLbl, priceLbl, stepper);
+            addonsListVBox.getChildren().add(row);
+        }
+
+        mainBox.getChildren().addAll(titleLabel, descLabel, addonsListVBox, new javafx.scene.control.Separator(), totalLabel);
+
+        javafx.scene.control.ScrollPane scrollPane = new javafx.scene.control.ScrollPane(mainBox);
+        scrollPane.setFitToWidth(true);
+        scrollPane.setStyle("-fx-background-color: transparent; -fx-background: transparent;");
+        scrollPane.setPrefHeight(280);
+        scrollPane.setMaxHeight(300);
+
+        dialogPane.setContent(scrollPane);
+
+        dialog.showAndWait().ifPresent(btn -> {
+            if (btn == javafx.scene.control.ButtonType.OK) {
+                int insertIndex = cartList.size();
+                if (selectedCartItem != null) {
+                    int idx = cartList.indexOf(selectedCartItem);
+                    if (idx != -1) {
+                        insertIndex = idx + 1;
+                    }
+                }
+
+                for (java.util.Map.Entry<String, Integer> entry : selectedQuantities.entrySet()) {
+                    int count = entry.getValue();
+                    if (count > 0) {
+                        BigDecimal price = addonPrices.get(entry.getKey());
+                        String addonName = "↳ " + entry.getKey() + " (Addon)";
+                        
+                        UUID restaurantId = getActiveRestaurantId();
+                        MenuItem addonMenuItem = menuRepository.findByRestaurantId(restaurantId).stream()
+                                .filter(m -> m.getName().equalsIgnoreCase(addonName))
+                                .findFirst()
+                                .orElseGet(() -> {
+                                    MenuItem mi = new MenuItem();
+                                    mi.setRestaurantId(restaurantId);
+                                    mi.setName(addonName);
+                                    mi.setPrice(price);
+                                    mi.setCategoryName("Addon");
+                                    mi.setShortCode("ADD");
+                                    mi.setAvailable(true);
+                                    mi.setTodaysMenu(true);
+                                    mi.setVeg(true);
+                                    return menuRepository.saveAndFlush(mi);
+                                });
+
+                        CartItem addonCartItem = new CartItem(addonMenuItem, count);
+                        cartList.add(insertIndex, addonCartItem);
+                        insertIndex++;
+                    }
+                }
+                populateCart();
+                updateCalculations();
+                populateModifiersUi();
+            }
+        });
+    }
+
+    @FXML
+    public void handleDetAddDiscount() {
+        handleDiscountDialog();
+    }
+
+    @FXML
+    public void handleDetAddDiscount(javafx.event.ActionEvent event) {
+        handleDiscountDialog();
+    }
+
+    @FXML
     public void handleLogout(javafx.event.ActionEvent event) {
         try {
             if (autoRefreshTimeline != null) {
@@ -7921,14 +8845,25 @@ public class UiDashboardController implements Initializable {
                     sourceBtn.setText(originalText);
                     sourceBtn.setDisable(false);
                     
-                    // Refresh all views
+                    // Refresh POS Billing Page Menu Items, Top 8 & Frequently Ordered
+                    populateMenuGrid();
+                    populateTop8();
+                    populateFrequentlyOrdered();
+
+                    // Refresh tables and order lists
                     loadTablesToUi();
                     loadRunningOrders();
                     loadStockOut();
                     loadPlatformStats();
                     loadPlatformOrders();
+                    updateCalculations();
                     
-                    // Refresh menu grid / combos in Billing View
+                    // Refresh KDS views
+                    if (kdsNativeController != null) {
+                        kdsNativeController.refreshKdsData();
+                    }
+
+                    // Refresh menu grid / combos in Billing View / Web View
                     try {
                         if (menuWebView != null && menuWebView.getEngine() != null) {
                             menuWebView.getEngine().executeScript("refreshUI();");

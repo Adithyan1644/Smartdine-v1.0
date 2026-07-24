@@ -48,4 +48,15 @@ public class OrderController {
         com.smartdine.coreheart.KOTStatus status = com.smartdine.coreheart.KOTStatus.valueOf(statusStr.toUpperCase());
         return ResponseEntity.ok(orderService.updateKOTItemStatus(kotId, kotItemId, status));
     }
+
+    @PutMapping("/{orderId}/priority")
+    public ResponseEntity<Order> updatePriority(
+            @PathVariable java.util.UUID orderId,
+            @RequestBody(required = false) java.util.Map<String, Boolean> body) {
+        if (body != null && body.containsKey("priority")) {
+            return ResponseEntity.ok(orderService.updateOrderPriority(orderId, body.get("priority")));
+        } else {
+            return ResponseEntity.ok(orderService.toggleOrderPriority(orderId));
+        }
+    }
 }

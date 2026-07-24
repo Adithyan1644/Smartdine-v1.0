@@ -669,7 +669,9 @@ function formatTime(sec) {
 function startTimers() {
   setInterval(() => {
     activeKots.forEach(kot => {
-      kot.elapsedSeconds++;
+      if (kot.status !== 'READY' && kot.status !== 'SERVED') {
+        kot.elapsedSeconds++;
+      }
       const timerLabel = document.getElementById(`timer-${kot.id}`);
       if (timerLabel) {
         timerLabel.textContent = formatTime(kot.elapsedSeconds);
@@ -750,12 +752,13 @@ function renderKdsGrid() {
   });
 
   filtered.sort((a, b) => {
+    if ((a.isPriority ? 1 : 0) !== (b.isPriority ? 1 : 0)) {
+      return (b.isPriority ? 1 : 0) - (a.isPriority ? 1 : 0);
+    }
     const statusOrder = { 'PENDING': 0, 'PREPARING': 1, 'READY': 2 };
     const wa = statusOrder[a.status] !== undefined ? statusOrder[a.status] : 99;
     const wb = statusOrder[b.status] !== undefined ? statusOrder[b.status] : 99;
     if (wa !== wb) return wa - wb;
-    // Within same status: newest ticket first
-    // Use createdAt if available (DB tickets), otherwise use elapsedSeconds (higher = older) descending
     if (a.createdAt && b.createdAt) return new Date(b.createdAt) - new Date(a.createdAt);
     return (a.elapsedSeconds || 0) - (b.elapsedSeconds || 0);
   });
@@ -779,27 +782,40 @@ function renderKdsGrid() {
     const card = document.createElement("div");
     card.id = `card-${kot.id}`;
     card.className = `k-card ${statusClass}`;
+    if (kot.isPriority) {
+      card.style.borderColor = '#F59E0B';
+      card.style.borderWidth = '2px';
+      card.style.background = '#FFFDF5';
+    }
 
     const isBiller = currentRole === "BILLER";
     const statusText = getStatusLabel(kot);
     let badgeClass = `badge-${kot.status.toLowerCase()}`;
     if (isDelayed) badgeClass = "badge-delayed";
 
+    const titleSource = kot.isPriority ? `👑 ${kot.source}` : kot.source;
+    const prioBadgeHTML = kot.isPriority ? `<span class="card-status-badge" style="background:#FEF3C7;color:#D97706;border:1px solid #F59E0B;font-weight:800">👑 PRIORITY</span>` : '';
+
     let headerHTML = `
       <div class="k-header">
-        <div class="k-title">${kot.source} &nbsp;<span>${kot.orderId}</span></div>
+        <div class="k-title">${titleSource} &nbsp;<span>${kot.orderId}</span></div>
         <div class="k-timer" id="timer-${kot.id}">${formatTime(kot.elapsedSeconds)}</div>
       </div>
       <div class="k-meta">
         <span>KOT: ${kot.id}</span>
+        ${prioBadgeHTML}
         <span class="card-status-badge ${badgeClass}">${statusText}</span>
       </div>
     `;
 
     const stationFilter = document.getElementById("station-filter").value;
-    let displayedItems = kot.items;
+    let displayedItems = kot.items ? kot.items.filter(item => {
+      const iName = item.name || item.itemName || '';
+      return item.status !== 'SERVED' && item.status !== 'CANCELLED' && !item.cooked && !iName.startsWith("↳ ") && !iName.toLowerCase().startsWith("addon:");
+    }) : [];
+
     if (stationFilter !== "ALL") {
-      displayedItems = kot.items.filter(item => item.station === stationFilter);
+      displayedItems = displayedItems.filter(item => item.station === stationFilter);
     }
 
     let itemsHTML = '<div class="k-items">';
@@ -813,8 +829,8 @@ function renderKdsGrid() {
         <div class="k-item-row ${cookedClass}" ${isBiller ? 'style="cursor:default"' : `onclick="toggleItemCooked('${kot.id}', ${originalIndex}, event)"`}>
           <input type="checkbox" id="${itemKey}" ${isChecked} ${isBiller ? 'disabled' : ''} onclick="event.stopPropagation(); ${isBiller ? 'event.preventDefault()' : `toggleItemCooked('${kot.id}', ${originalIndex}, event)`}">
           <div class="k-item-info">
-            <span class="k-item-qty">${item.qty}x</span>${item.name}
-            ${item.modifier ? `<div class="k-item-notes">${item.modifier}</div>` : ''}
+            <span class="k-item-qty">${item.qty || item.quantity || 1}x</span>${item.name || item.itemName || ''}
+            ${(item.modifier || item.specialInstruction) ? `<div class="k-item-notes"><i class="ti ti-notes" style="font-size:12px;margin-right:3px"></i>${item.modifier || item.specialInstruction}</div>` : ''}
           </div>
         </div>
       `;
@@ -1001,13 +1017,15 @@ function updateCumulativeQueue() {
   let consolidated = {};
 
   activeKots.forEach(kot => {
-    if (kot.status !== 'READY') {
+    if (kot.status !== 'READY' && kot.status !== 'SERVED') {
       kot.items.forEach(item => {
-        if (!item.cooked) {
-          if (consolidated[item.name]) {
-            consolidated[item.name] += item.qty;
+        const itemName = item.name || item.itemName || '';
+        if (!item.cooked && item.status !== 'SERVED' && itemName && !itemName.startsWith("↳ ") && !itemName.toLowerCase().startsWith("addon:")) {
+          const qtyVal = item.qty || item.quantity || 1;
+          if (consolidated[itemName]) {
+            consolidated[itemName] += qtyVal;
           } else {
-            consolidated[item.name] = item.qty;
+            consolidated[itemName] = qtyVal;
           }
         }
       });
