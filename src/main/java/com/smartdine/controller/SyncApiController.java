@@ -13,7 +13,8 @@ import java.time.LocalDateTime;
 import java.util.*;
 
 /**
- * Cloud API Controller receiving Direction A sales archiving requests from local Billing PCs.
+ * Cloud API Controller receiving Direction A sales archiving requests from
+ * local Billing PCs.
  * Writes transaction data directly into Google Cloud SQL Master Database.
  */
 @RestController
@@ -29,7 +30,8 @@ public class SyncApiController {
         try {
             Order order = mapPayloadToOrder(payload);
             orderRepository.save(order);
-            System.out.println("☁️ GCP Cloud SQL: Successfully archived order " + order.getOrderNumber() + " for Restaurant: " + order.getRestaurantId());
+            System.out.println("☁️ GCP Cloud SQL: Successfully archived order " + order.getOrderNumber()
+                    + " for Restaurant: " + order.getRestaurantId());
             return ResponseEntity.ok(Map.of("success", true, "message", "Order archived to Cloud SQL"));
         } catch (Exception e) {
             System.err.println("❌ Cloud Sync Error: " + e.getMessage());
@@ -60,7 +62,8 @@ public class SyncApiController {
         if (payload.get("restaurantId") != null) {
             try {
                 order.setRestaurantId(UUID.fromString(payload.get("restaurantId").toString()));
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
         }
         if (order.getRestaurantId() == null) {
             order.setRestaurantId(UUID.fromString("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"));
@@ -81,11 +84,16 @@ public class SyncApiController {
         order.setSource(payload.get("source") != null ? payload.get("source").toString() : "DIRECT");
         order.setStatus(OrderStatus.PAID);
 
-        if (payload.get("subTotal") != null) order.setSubTotal(new BigDecimal(payload.get("subTotal").toString()));
-        if (payload.get("cgst") != null) order.setCgst(new BigDecimal(payload.get("cgst").toString()));
-        if (payload.get("sgst") != null) order.setSgst(new BigDecimal(payload.get("sgst").toString()));
-        if (payload.get("discount") != null) order.setDiscount(new BigDecimal(payload.get("discount").toString()));
-        if (payload.get("grandTotal") != null) order.setGrandTotal(new BigDecimal(payload.get("grandTotal").toString()));
+        if (payload.get("subTotal") != null)
+            order.setSubTotal(new BigDecimal(payload.get("subTotal").toString()));
+        if (payload.get("cgst") != null)
+            order.setCgst(new BigDecimal(payload.get("cgst").toString()));
+        if (payload.get("sgst") != null)
+            order.setSgst(new BigDecimal(payload.get("sgst").toString()));
+        if (payload.get("discount") != null)
+            order.setDiscount(new BigDecimal(payload.get("discount").toString()));
+        if (payload.get("grandTotal") != null)
+            order.setGrandTotal(new BigDecimal(payload.get("grandTotal").toString()));
 
         order.setPaymentMode(payload.get("paymentMode") != null ? payload.get("paymentMode").toString() : "CASH");
         order.setCustomerName(payload.get("customerName") != null ? payload.get("customerName").toString() : "Walk-in");
@@ -94,7 +102,8 @@ public class SyncApiController {
         if (payload.get("startedAt") != null) {
             try {
                 order.setStartedAt(LocalDateTime.parse(payload.get("startedAt").toString()));
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
         }
         if (payload.get("settledAt") != null) {
             try {

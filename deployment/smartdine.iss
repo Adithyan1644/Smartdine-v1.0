@@ -7,7 +7,7 @@
 [Setup]
 AppId={{A8F9C1D2-3B4E-5F6A-7B8C-9D0E1F2A3B4C}
 AppName=Surabhi SmartDine
-AppVersion=1.0.4
+AppVersion=1.0.5
 AppPublisher=Surabhi Software Solutions
 AppPublisherURL=https://smartdine-saas.web.app
 AppSupportURL=https://smartdine-saas.web.app/support
@@ -29,7 +29,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 ; ── Core application JAR (actual Maven output filename) ──────────────────────
-Source: "..\target\core-heart-1.0.4.jar"; DestDir: "{app}"; DestName: "smartdine-heart.jar"; Flags: ignoreversion
+Source: "..\target\core-heart-1.0.5.jar"; DestDir: "{app}"; DestName: "smartdine-heart.jar"; Flags: ignoreversion
 
 ; ── Auto-updater batch script ─────────────────────────────────────────────────
 Source: "update.bat"; DestDir: "C:\SmartDine"; Flags: ignoreversion
