@@ -34,4 +34,4 @@ automatic_scaling:
 # The appengine-maven-plugin renames it to the artifact filename in the staging dir.
 # -Xmx400m  → cap heap at 400 MB to fit safely inside the F2 512 MB budget.
 # -Dserver.port=8080 → App Engine always routes external traffic to port 8080.
-entrypoint: java -Xmx400m -Dserver.port=8080 -jar core-heart-0.0.1-SNAPSHOT.jar
+entrypoint: java -Xmx400m -Dserver.port=8080 -jar core-heart-1.0.5.jar
