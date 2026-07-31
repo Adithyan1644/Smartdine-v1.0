@@ -14,6 +14,7 @@ import javafx.scene.shape.SVGPath;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import jakarta.annotation.PreDestroy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import netscape.javascript.JSObject;
 
@@ -513,6 +514,14 @@ public class UiDashboardController implements Initializable {
     private final java.util.concurrent.atomic.AtomicBoolean isRefreshing = new java.util.concurrent.atomic.AtomicBoolean(false);
     private final java.util.concurrent.atomic.AtomicBoolean isBillingRefreshing = new java.util.concurrent.atomic.AtomicBoolean(false);
     private volatile boolean isUserInteractingWithCheckout = false;
+
+    @PreDestroy
+    public void cleanup() {
+        System.out.println("[UiDashboardController] Shutdown hook triggered. Halting background UI schedulers.");
+        if (autoRefreshTimeline != null) {
+            autoRefreshTimeline.stop();
+        }
+    }
 
     // POS Cart structures
     private List<CartItem> cartList = new ArrayList<>();

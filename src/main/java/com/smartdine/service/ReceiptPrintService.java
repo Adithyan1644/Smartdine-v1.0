@@ -63,12 +63,14 @@ public class ReceiptPrintService {
 
         sb.append(dashSeparator);
 
+        int itemWidth = maxCols == 32 ? 14 : 24;
+
         // Item Columns Header
         if (maxCols == 32) {
-            // 58mm Layout (32 cols): Item (16) Qty(4) Rate(5) Total(7)
+            // 58mm Layout (32 cols): Item (14) Qty(3) Rate(6) Total(6)
             sb.append(String.format("%-14s %3s %6s %6s\n", "ITEM", "QTY", "RATE", "TOTAL"));
         } else {
-            // 80mm Layout (48 cols): Item (24) Qty(6) Rate(8) Total(8)
+            // 80mm Layout (48 cols): Item (24) Qty(5) Rate(8) Total(8)
             sb.append(String.format("%-24s %5s %8s %8s\n", "ITEM", "QTY", "RATE", "TOTAL"));
         }
         sb.append(dashSeparator);
@@ -82,12 +84,22 @@ public class ReceiptPrintService {
             double itemTotal = qty * rate;
             subtotal += itemTotal;
 
+            List<String> wrappedLines = wrapTextToLines(name, itemWidth);
+            String firstLine = wrappedLines.isEmpty() ? name : wrappedLines.get(0);
+
             if (maxCols == 32) {
-                String truncName = name.length() > 14 ? name.substring(0, 14) : name;
-                sb.append(String.format("%-14s %3d %6.2f %6.2f\n", truncName, qty, rate, itemTotal));
+                sb.append(String.format("%-14s %3d %6.2f %6.2f\n", firstLine, qty, rate, itemTotal));
             } else {
-                String truncName = name.length() > 24 ? name.substring(0, 24) : name;
-                sb.append(String.format("%-24s %5d %8.2f %8.2f\n", truncName, qty, rate, itemTotal));
+                sb.append(String.format("%-24s %5d %8.2f %8.2f\n", firstLine, qty, rate, itemTotal));
+            }
+
+            // Print multi-line overflow below without repeating quantity/price
+            for (int i = 1; i < wrappedLines.size(); i++) {
+                if (maxCols == 32) {
+                    sb.append(String.format("%-14s %3s %6s %6s\n", wrappedLines.get(i), "", "", ""));
+                } else {
+                    sb.append(String.format("%-24s %5s %8s %8s\n", wrappedLines.get(i), "", "", ""));
+                }
             }
         }
 
@@ -117,6 +129,37 @@ public class ReceiptPrintService {
         }
 
         return sb.toString();
+    }
+
+    private List<String> wrapTextToLines(String text, int limit) {
+        List<String> lines = new ArrayList<>();
+        if (text == null || text.trim().isEmpty()) return lines;
+        String[] words = text.split(" ");
+        StringBuilder currentLine = new StringBuilder();
+
+        for (String word : words) {
+            if (currentLine.length() + word.length() + (currentLine.length() > 0 ? 1 : 0) > limit) {
+                if (currentLine.length() > 0) {
+                    lines.add(currentLine.toString());
+                    currentLine = new StringBuilder();
+                }
+                if (word.length() > limit) {
+                    lines.add(word.substring(0, limit));
+                    currentLine.append(word.substring(limit));
+                } else {
+                    currentLine.append(word);
+                }
+            } else {
+                if (currentLine.length() > 0) {
+                    currentLine.append(" ");
+                }
+                currentLine.append(word);
+            }
+        }
+        if (currentLine.length() > 0) {
+            lines.add(currentLine.toString());
+        }
+        return lines;
     }
 
     private String centerText(String text, int width) {
