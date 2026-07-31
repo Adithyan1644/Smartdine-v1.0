@@ -37,7 +37,7 @@ import java.util.UUID;
 @Service
 public class VersionCheckService {
 
-    public static final String CURRENT_VERSION = "1.0.4";
+    public static final String CURRENT_VERSION = "1.0.5";
 
     public static String getLocalVersion() {
         try {
