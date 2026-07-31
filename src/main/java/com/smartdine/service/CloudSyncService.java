@@ -1,123 +1,146 @@
 package com.smartdine.service;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smartdine.coreheart.Order;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Profile;
-import org.springframework.http.*;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-import java.io.File;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
-/**
- * Direction A: Local-to-Cloud Sync (Asynchronous Sales Archiving &
- * Auto-Recovery)
- * Automatically archives settled sales from the local Billing PC to Google
- * Cloud SQL.
- * Includes local offline disk caching and auto-recovery bulk upload when
- * internet returns.
- */
 @Service
-@Profile("!prod") // Active on local restaurant Billing PC
 public class CloudSyncService {
 
-    private final String CLOUD_SYNC_URL = "https://smartdine-saas.ew.r.appspot.com/api/sync/orders";
-    private final String CLOUD_BULK_SYNC_URL = "https://smartdine-saas.ew.r.appspot.com/api/sync/orders/bulk";
-    private final File offlineQueueFile = new File("offline-sales-queue.json");
+    private final JdbcTemplate jdbcTemplate;
+    private final RestTemplate restTemplate;
 
-    private final RestTemplate restTemplate = new RestTemplate();
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    // Direct points to cloud gateways
+    private final String DEV_CLOUD_URL = "https://smartdine-v1-0-git-635032287458.europe-west1.run.app/api/sync/process";
+    private final String PROD_CLOUD_URL = "https://smartdine-saas-prod.appspot.com/api/sync/process";
+
+    public CloudSyncService(JdbcTemplate jdbcTemplate) {
+        this.jdbcTemplate = jdbcTemplate;
+        this.restTemplate = new RestTemplate();
+    }
+
+    // Runs automatically every 5 seconds inside a background virtual thread
+    @Scheduled(fixedDelay = 5000)
+    public void processLocalOutboxQueue() {
+        List<Map<String, Object>> pendingEvents;
+        try {
+            // Ensure outbox table exists in database
+            jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS sync_outbox (" +
+                    "id UUID PRIMARY KEY, " +
+                    "event_type VARCHAR(50) NOT NULL, " +
+                    "payload TEXT NOT NULL, " +
+                    "synced BOOLEAN DEFAULT false, " +
+                    "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
+                    "synced_at TIMESTAMP)");
+
+            pendingEvents = jdbcTemplate.queryForList(
+                    "SELECT id, event_type, payload, created_at FROM sync_outbox WHERE synced = false ORDER BY created_at ASC LIMIT 10"
+            );
+        } catch (Exception e) {
+            // Outbox table not created or query failed silently
+            return;
+        }
+
+        if (pendingEvents.isEmpty()) {
+            return;
+        }
+
+        // Determine if this instance is flagged as a development or production merchant
+        boolean isTestSystem = false;
+        try {
+            Boolean testFlag = jdbcTemplate.queryForObject(
+                    "SELECT r.is_test FROM system_config s JOIN restaurants r ON s.restaurant_id = r.id LIMIT 1",
+                    Boolean.class
+            );
+            if (testFlag != null) {
+                isTestSystem = testFlag;
+            }
+        } catch (Exception ignored) {
+        }
+
+        String activeGatewayUrl = isTestSystem ? DEV_CLOUD_URL : PROD_CLOUD_URL;
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        
+        // Retrieve local auth token to validate tenant context on GCP
+        try {
+            String authToken = jdbcTemplate.queryForObject("SELECT cloud_auth_token FROM system_config LIMIT 1", String.class);
+            if (authToken != null && !authToken.trim().isEmpty()) {
+                headers.set("Authorization", "Bearer " + authToken);
+            }
+        } catch (Exception ignored) {
+        }
+
+        for (Map<String, Object> event : pendingEvents) {
+            Object rawId = event.get("id");
+            UUID eventId;
+            if (rawId instanceof UUID) {
+                eventId = (UUID) rawId;
+            } else if (rawId != null) {
+                eventId = UUID.fromString(rawId.toString());
+            } else {
+                continue;
+            }
+
+            String eventType = (String) event.get("event_type");
+            String payloadJson = (String) event.get("payload");
+
+            try {
+                // Post payload to the designated cloud gateway (DEV or PROD)
+                HttpEntity<String> request = new HttpEntity<>(payloadJson, headers);
+                restTemplate.postForEntity(activeGatewayUrl + "?type=" + eventType, request, String.class);
+
+                // Update outbox state to prevent duplicate processing
+                jdbcTemplate.update("UPDATE sync_outbox SET synced = true, synced_at = CURRENT_TIMESTAMP WHERE id = ?", eventId);
+                System.out.println("Sync Succeeded: Sent outbox transaction [" + eventId + "] successfully.");
+
+            } catch (Exception e) {
+                System.err.println("Sync Failed: Unable to transmit outbox transaction [" + eventId + "]. Connection held for retry: " + e.getMessage());
+                break; // Halt queue processing temporarily until connection is recovered
+            }
+        }
+    }
 
     /**
-     * Triggers asynchronous background sync for a settled order.
-     * Runs in a Virtual Thread (@Async) so cashier checkout is 100% instant.
+     * Legacy helper method: Enqueues a order into sync_outbox.
      */
     @Async
     public void syncOrderToCloud(Order order) {
-        if (order == null)
-            return;
-
-        Map<String, Object> payload = buildOrderPayload(order);
-
+        if (order == null) return;
         try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("X-Restaurant-ID", order.getRestaurantId() != null ? order.getRestaurantId().toString() : "");
+            jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS sync_outbox (" +
+                    "id UUID PRIMARY KEY, " +
+                    "event_type VARCHAR(50) NOT NULL, " +
+                    "payload TEXT NOT NULL, " +
+                    "synced BOOLEAN DEFAULT false, " +
+                    "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
+                    "synced_at TIMESTAMP)");
 
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(payload, headers);
-            ResponseEntity<String> response = restTemplate.postForEntity(CLOUD_SYNC_URL, entity, String.class);
-
-            if (response.getStatusCode().is2xxSuccessful()) {
-                System.out.println(
-                        "☁️ Cloud Sync: Archived settled bill " + order.getOrderNumber() + " to Google Cloud SQL.");
-            } else {
-                saveToOfflineQueue(payload);
-            }
+            UUID eventId = UUID.randomUUID();
+            String payload = buildOrderPayloadJson(order);
+            jdbcTemplate.update(
+                    "INSERT INTO sync_outbox (id, event_type, payload, synced, created_at) VALUES (?, ?, ?, false, CURRENT_TIMESTAMP)",
+                    eventId, "ORDER_SETTLED", payload
+            );
         } catch (Exception e) {
-            System.err.println("⚠️ Local: Internet connection offline (" + e.getMessage() + "). Archived bill "
-                    + order.getOrderNumber() + " locally for auto cloud push.");
-            saveToOfflineQueue(payload);
+            System.err.println("Error enqueuing order into sync_outbox: " + e.getMessage());
         }
     }
 
-    /**
-     * Periodically flushes offline queued bills to Google Cloud SQL when internet
-     * connectivity returns.
-     */
-    @Scheduled(fixedDelay = 30000)
-    public synchronized void flushOfflineQueue() {
-        if (!offlineQueueFile.exists() || offlineQueueFile.length() == 0) {
-            return;
-        }
-
-        try {
-            List<Map<String, Object>> queuedOrders = objectMapper.readValue(offlineQueueFile,
-                    new TypeReference<List<Map<String, Object>>>() {
-                    });
-            if (queuedOrders.isEmpty())
-                return;
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-
-            HttpEntity<List<Map<String, Object>>> entity = new HttpEntity<>(queuedOrders, headers);
-            ResponseEntity<String> response = restTemplate.postForEntity(CLOUD_BULK_SYNC_URL, entity, String.class);
-
-            if (response.getStatusCode().is2xxSuccessful()) {
-                System.out.println("🚀 Local: Internet restored! Bulk uploaded " + queuedOrders.size()
-                        + " offline sales to Google Cloud SQL.");
-                // Clear queue file
-                objectMapper.writeValue(offlineQueueFile, Collections.emptyList());
-            }
-        } catch (Exception e) {
-            // Internet is still offline or server unreachable — keep retry silent until
-            // restored
-        }
-    }
-
-    private synchronized void saveToOfflineQueue(Map<String, Object> payload) {
-        try {
-            List<Map<String, Object>> queue = new ArrayList<>();
-            if (offlineQueueFile.exists() && offlineQueueFile.length() > 0) {
-                try {
-                    queue = objectMapper.readValue(offlineQueueFile, new TypeReference<List<Map<String, Object>>>() {
-                    });
-                } catch (Exception ignored) {
-                }
-            }
-            queue.add(payload);
-            objectMapper.writeValue(offlineQueueFile, queue);
-        } catch (Exception e) {
-            System.err.println("Error queueing offline sales transaction: " + e.getMessage());
-        }
-    }
-
-    private Map<String, Object> buildOrderPayload(Order order) {
+    private String buildOrderPayloadJson(Order order) {
         Map<String, Object> payload = new HashMap<>();
         payload.put("restaurantId", order.getRestaurantId() != null ? order.getRestaurantId().toString() : "");
         payload.put("orderNumber", order.getOrderNumber());
@@ -132,9 +155,11 @@ public class CloudSyncService {
         payload.put("paymentMode", order.getPaymentMode() != null ? order.getPaymentMode() : "CASH");
         payload.put("customerName", order.getCustomerName());
         payload.put("customerPhone", order.getCustomerPhone());
-        payload.put("startedAt", order.getStartedAt() != null ? order.getStartedAt().toString() : null);
-        payload.put("settledAt", order.getSettledAt() != null ? order.getSettledAt().toString()
-                : java.time.LocalDateTime.now().toString());
-        return payload;
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            return mapper.writeValueAsString(payload);
+        } catch (Exception e) {
+            return "{}";
+        }
     }
 }

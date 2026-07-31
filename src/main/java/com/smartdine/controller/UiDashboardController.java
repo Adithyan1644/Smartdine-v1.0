@@ -512,6 +512,7 @@ public class UiDashboardController implements Initializable {
     private Timeline autoRefreshTimeline;
     private final java.util.concurrent.atomic.AtomicBoolean isRefreshing = new java.util.concurrent.atomic.AtomicBoolean(false);
     private final java.util.concurrent.atomic.AtomicBoolean isBillingRefreshing = new java.util.concurrent.atomic.AtomicBoolean(false);
+    private volatile boolean isUserInteractingWithCheckout = false;
 
     // POS Cart structures
     private List<CartItem> cartList = new ArrayList<>();
@@ -8081,6 +8082,10 @@ public class UiDashboardController implements Initializable {
     }
 
     private void handleBillingViewRefresh() {
+        if (isUserInteractingWithCheckout) {
+            logRefresh("[Scheduler] UI Refresh bypassed. User is currently interacting with checkout.");
+            return;
+        }
         if (!isBillingRefreshing.compareAndSet(false, true)) {
             return;
         }
@@ -8188,13 +8193,26 @@ public class UiDashboardController implements Initializable {
                     } else {
                         logRefresh("finalTableOrderId is null. currentActiveOrder=" + (localActiveOrder == null ? "null" : localActiveOrder.getId()));
                         if (localActiveOrder != null) {
-                            logRefresh("Current active order exists but tableOrderId is null! Voiding session on UI.");
-                            Platform.runLater(() -> {
-                                showAlert("Order Status Updated", "This order has been paid or cancelled on another terminal.");
-                                resetBillingSessionState();
-                                showHomeView();
-                            });
-                            return;
+                            String dbOrderStatusStr = null;
+                            try {
+                                dbOrderStatusStr = jdbcTemplate.queryForObject(
+                                        "SELECT status FROM orders WHERE id = ?",
+                                        String.class,
+                                        localActiveOrder.getId());
+                            } catch (Exception e) {
+                                logRefresh("Error querying active order status via JDBC: " + e.getMessage());
+                            }
+                            if (dbOrderStatusStr == null || "PAID".equals(dbOrderStatusStr) || "CANCELLED".equals(dbOrderStatusStr)) {
+                                logRefresh("Current active order is paid or cancelled in DB! Voiding session on UI.");
+                                Platform.runLater(() -> {
+                                    if (!isUserInteractingWithCheckout) {
+                                        showAlert("Order Status Updated", "This order has been paid or cancelled on another terminal.");
+                                        resetBillingSessionState();
+                                        showHomeView();
+                                    }
+                                });
+                                return;
+                            }
                         }
                     }
 
@@ -8222,9 +8240,11 @@ public class UiDashboardController implements Initializable {
                     if (dbOrderStatusStr == null || "PAID".equals(dbOrderStatusStr) || "CANCELLED".equals(dbOrderStatusStr)) {
                         logRefresh("Order paid or cancelled! Redirecting to home.");
                         Platform.runLater(() -> {
-                            showAlert("Order Status Updated", "This order has been paid or cancelled on another terminal.");
-                            resetBillingSessionState();
-                            showHomeView();
+                            if (!isUserInteractingWithCheckout) {
+                                showAlert("Order Status Updated", "This order has been paid or cancelled on another terminal.");
+                                resetBillingSessionState();
+                                showHomeView();
+                            }
                         });
                         return;
                     }
