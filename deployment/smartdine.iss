@@ -1,36 +1,70 @@
+; =====================================================================
+; SURABHI SMARTDINE — WINDOWS SYSTEM DEPLOYMENT BUILDER
+; Build: Inno Setup 6.x  |  Target: Windows 10/11 x64
+; TEST BUILD — uses system Java, no bundled JRE or PostgreSQL
+; =====================================================================
+
 [Setup]
+AppId={{A8F9C1D2-3B4E-5F6A-7B8C-9D0E1F2A3B4C}
 AppName=Surabhi SmartDine
-AppVersion=1.0
-DefaultDirName={commonpf}\SurabhiSmartDine
+AppVersion=1.0.4
+AppPublisher=Surabhi Software Solutions
+AppPublisherURL=https://smartdine-saas.web.app
+AppSupportURL=https://smartdine-saas.web.app/support
+AppUpdatesURL=https://smartdine-saas.web.app/updates
+DefaultDirName={autopf}\SurabhiSmartDine
 DefaultGroupName=Surabhi SmartDine
+DisableProgramGroupPage=yes
 OutputBaseFilename=SmartDine_Setup
 Compression=lzma
 SolidCompression=yes
+WizardStyle=modern
 PrivilegesRequired=admin
 
+[Languages]
+Name: "english"; MessagesFile: "compiler:Default.isl"
+
+[Tasks]
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+
 [Files]
-Source: "smartdine-heart.jar"; DestDir: "{app}"; Flags: ignoreversion
-Source: "smartdine-service.exe"; DestDir: "{app}"; Flags: ignoreversion
+; ── Core application JAR (actual Maven output filename) ──────────────────────
+Source: "..\target\core-heart-1.0.4.jar"; DestDir: "{app}"; DestName: "smartdine-heart.jar"; Flags: ignoreversion
+
+; ── Auto-updater batch script ─────────────────────────────────────────────────
+Source: "update.bat"; DestDir: "C:\SmartDine"; Flags: ignoreversion
+
+; ── WinSW service config XML ──────────────────────────────────────────────────
 Source: "smartdine-service.xml"; DestDir: "{app}"; Flags: ignoreversion
-Source: "jre\*"; DestDir: "{app}\jre"; Flags: recursesubdirs createallsubdirs
-Source: "postgresql-16-windows-x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
 [Icons]
-Name: "{commondesktop}\Surabhi SmartDine"; Filename: "{app}\jre\bin\javaw.exe"; Parameters: "-jar ""{app}\smartdine-heart.jar"""
+; Start Menu shortcut — uses system javaw (Java must be installed on POS PC)
+Name: "{group}\Surabhi SmartDine"; \
+  Filename: "javaw.exe"; \
+  Parameters: "-jar ""{app}\smartdine-heart.jar"""
+
+; Desktop shortcut (optional — user must tick the checkbox during install)
+Name: "{commondesktop}\Surabhi SmartDine"; \
+  Filename: "javaw.exe"; \
+  Parameters: "-jar ""{app}\smartdine-heart.jar"""; \
+  Tasks: desktopicon
 
 [Run]
-; 1. Silently install PostgreSQL in the background
-Filename: "{tmp}\postgresql-16-windows-x64.exe"; \
-  Parameters: "--mode unattended --unattendedmodeui none --postgrespassword admin123 --port 5432"; \
-  StatusMsg: "Installing Database Engine (This may take a minute)..."; Flags: runhidden
-
-; 2. Silently bypass the Windows Firewall on Port 8080
+; Open port 8080 for inbound connections (Spring Boot local gateway)
 Filename: "netsh"; \
   Parameters: "advfirewall firewall add rule name=""SmartDine POS Gateway"" dir=in action=allow protocol=TCP localport=8080 profile=any"; \
-  StatusMsg: "Configuring Network Security..."; Flags: runhidden
+  StatusMsg: "Configuring network firewall rule..."; \
+  Flags: runhidden
 
-; 3. Register the Spring Boot service
-Filename: "{app}\smartdine-service.exe"; Parameters: "install"; StatusMsg: "Configuring Core Services..."; Flags: runhidden
+; Launch SmartDine after install (user can uncheck if preferred)
+Filename: "javaw.exe"; \
+  Parameters: "-jar ""{app}\smartdine-heart.jar"""; \
+  Description: "Launch Surabhi SmartDine POS now"; \
+  Flags: nowait postinstall skipifsilent
 
-; 4. Start the service
-Filename: "{app}\smartdine-service.exe"; Parameters: "start"; StatusMsg: "Starting Core Services..."; Flags: runhidden
+[UninstallRun]
+; Remove firewall rule on uninstall
+Filename: "netsh"; \
+  Parameters: "advfirewall firewall delete rule name=""SmartDine POS Gateway"""; \
+  RunOnceId: "RemoveFirewallRule"; \
+  Flags: runhidden

@@ -167,7 +167,7 @@ public class AuthService {
     }
 
     @org.springframework.transaction.annotation.Transactional
-    public java.util.Map<String, Object> registerNewTenant(String restaurantName, String username, String email, String password) {
+    public java.util.Map<String, Object> registerNewTenant(String restaurantName, String username, String email, String password, boolean isTest) {
         // 1. Create and save a new Restaurant
         String finalSyncCode = "";
         String waiterSyncCode = "";
@@ -187,7 +187,9 @@ public class AuthService {
         restaurant.setBillerSyncCode(finalSyncCode);
         restaurant.setWaiterSyncCode(waiterSyncCode);
         restaurant.setRestaurantId(UUID.randomUUID()); // unique identifier for the tenant
+        restaurant.setTest(isTest);                    // classify as DEV test or PROD live account
         restaurant = restaurantRepository.save(restaurant);
+
 
         UUID newRestId = restaurant.getRestaurantId();
 

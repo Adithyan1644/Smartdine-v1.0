@@ -1,7 +1,37 @@
-# Tells Google Cloud to run a native, high-performance Java 21 runtime
-runtime: java21 
-instance_class: F1
+# ===============================================================
+# SMARTDINE CORE-HEART — Google App Engine Deployment Descriptor
+# Project: smartdine-saas  |  Region: asia-south1
+# ===============================================================
 
+# App Engine Standard Environment (Java 21 native runtime)
+runtime: java21
+
+# Route all traffic to the default service
+service: default
+
+# F2 = 512 MB RAM — minimum viable for Spring Boot + HikariCP connection pool.
+# F1 (256 MB) will cause OOM crashes on startup.
+instance_class: F2
+
+# Environment variables injected into the cloud container at runtime.
+#   SPRING_PROFILES_ACTIVE=prod  → loads application-prod.properties
+#     which points Hibernate to Cloud SQL smartdine_dev via Unix Socket Factory.
+#   SPRING_THREADS_VIRTUAL_ENABLED=true → Java 21 virtual threads (low RAM).
 env_variables:
   SPRING_PROFILES_ACTIVE: "prod"
   SPRING_THREADS_VIRTUAL_ENABLED: "true"
+
+# Scale down to 0 when idle (cost saving), max 1 idle instance for fast cold-start.
+automatic_scaling:
+  min_idle_instances: 0
+  max_idle_instances: 1
+  max_instances: 2
+  min_pending_latency: 30ms
+  max_pending_latency: automatic
+  max_concurrent_requests: 80
+
+# Entrypoint: App Engine Standard stages the fat JAR to the app root.
+# The appengine-maven-plugin renames it to the artifact filename in the staging dir.
+# -Xmx400m  → cap heap at 400 MB to fit safely inside the F2 512 MB budget.
+# -Dserver.port=8080 → App Engine always routes external traffic to port 8080.
+entrypoint: java -Xmx400m -Dserver.port=8080 -jar core-heart-0.0.1-SNAPSHOT.jar

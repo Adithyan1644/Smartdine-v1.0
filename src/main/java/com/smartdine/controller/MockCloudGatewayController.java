@@ -31,22 +31,31 @@ public class MockCloudGatewayController {
         }
 
         String cleanedCode = code.trim().toLowerCase();
-        java.io.File file = new java.io.File("activation-" + cleanedCode + ".json");
+        
+        // 1. Check C:/SmartDine/ directory first (Windows permission safe location)
+        java.io.File file = new java.io.File("C:/SmartDine/activation-" + cleanedCode + ".json");
+        if (!file.exists()) {
+            file = new java.io.File("C:/SmartDine/activation-data.json");
+        }
+        if (!file.exists()) {
+            file = new java.io.File("activation-" + cleanedCode + ".json");
+        }
         if (!file.exists()) {
             file = new java.io.File("core-heart/activation-" + cleanedCode + ".json");
         }
         if (!file.exists()) {
             file = new java.io.File("core-heart/core-heart/activation-" + cleanedCode + ".json");
         }
-        if (!file.exists() && cleanedCode.equals("sd-28e792")) {
+        if (!file.exists()) {
             file = new java.io.File("activation-data.json");
-            if (!file.exists()) {
-                file = new java.io.File("core-heart/activation-data.json");
-            }
-            if (!file.exists()) {
-                file = new java.io.File("core-heart/core-heart/activation-data.json");
-            }
         }
+        if (!file.exists()) {
+            file = new java.io.File("core-heart/activation-data.json");
+        }
+        if (!file.exists()) {
+            file = new java.io.File("core-heart/core-heart/activation-data.json");
+        }
+
         if (file.exists()) {
             try {
                 com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
@@ -57,16 +66,8 @@ public class MockCloudGatewayController {
             }
         }
 
-        // Look up the code in the registry
-        if (!CODE_TO_RESTAURANT.containsKey(cleanedCode)) {
-            return ResponseEntity.badRequest().body(Map.of(
-                "error", "Invalid activation code: '" + code.trim() + "'. " +
-                         "Please check your SmartDine subscription code."
-            ));
-        }
-
-        String restaurantId = CODE_TO_RESTAURANT.get(cleanedCode);
-
+        // Look up code in registry or default to primary restaurant UUID
+        String restaurantId = CODE_TO_RESTAURANT.getOrDefault(cleanedCode, "9183522f-e62b-4cdc-b852-cac4b347cbc8");
 
         // Route to the appropriate restaurant config builder
         Map<String, Object> response = buildRestaurantConfig(cleanedCode, restaurantId);

@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ProgressBar?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.geometry.Insets?>
+
+<!--
+  SmartDine — Software Update Prompt Dialog
+  Palette: Surabhi Forest (#0A4F34 accent, #1A1A2E dark background)
+  Controller: UiUpdateController (Spring-managed @Component)
+-->
+<VBox
+    spacing="20.0"
+    prefWidth="460.0"
+    prefHeight="260.0"
+    style="-fx-background-color: #1A1A2E; -fx-border-color: #0A4F34; -fx-border-width: 2px; -fx-background-radius: 14; -fx-border-radius: 14;"
+    xmlns="http://javafx.com/javafx/21"
+    xmlns:fx="http://javafx.com/fxml/1"
+    fx:controller="com.smartdine.controller.UiUpdateController">
+
+    <padding>
+        <Insets top="28.0" right="28.0" bottom="28.0" left="28.0" />
+    </padding>
+
+    <children>
+        <!-- ── Header ── -->
+        <HBox spacing="10.0" alignment="CENTER_LEFT">
+            <children>
+                <Label text="⬆"
+                       style="-fx-font-size: 20px; -fx-text-fill: #0A4F34;" />
+                <Label text="System Update Available"
+                       style="-fx-font-size: 17px; -fx-font-weight: bold; -fx-text-fill: #E2E8F0; -fx-font-family: 'Segoe UI', sans-serif;" />
+            </children>
+        </HBox>
+
+        <!-- ── Description ── -->
+        <Label fx:id="descriptionLabel"
+               text="An optimised, stable version of the SmartDine POS is ready to install. Update now to receive the latest performance improvements and security patches."
+               wrapText="true"
+               style="-fx-text-fill: #94A3B8; -fx-font-size: 12.5px; -fx-font-family: 'Segoe UI', sans-serif; -fx-line-spacing: 2;" />
+
+        <!-- ── Progress elements (hidden until download starts) ── -->
+        <VBox spacing="6.0">
+            <children>
+                <ProgressBar fx:id="progressBar"
+                             progress="0.0"
+                             maxWidth="Infinity"
+                             prefHeight="10.0"
+                             visible="false"
+                             style="-fx-accent: #0A4F34; -fx-background-color: #2D2D44; -fx-background-radius: 5; -fx-border-radius: 5;" />
+                <Label fx:id="statusLabel"
+                       text=""
+                       visible="false"
+                       style="-fx-text-fill: #64748B; -fx-font-size: 11px; -fx-font-family: 'Segoe UI', sans-serif;" />
+            </children>
+        </VBox>
+
+        <!-- ── Action Buttons ── -->
+        <HBox fx:id="buttonBox" spacing="10.0" alignment="CENTER_RIGHT">
+            <children>
+                <Button fx:id="laterBtn"
+                        text="Update Later"
+                        onAction="#handleLater"
+                        prefWidth="120.0"
+                        prefHeight="36.0"
+                        style="-fx-background-color: #2D2D44; -fx-text-fill: #94A3B8; -fx-font-weight: bold; -fx-font-size: 12px; -fx-cursor: hand; -fx-background-radius: 8; -fx-font-family: 'Segoe UI', sans-serif;" />
+                <Button fx:id="updateBtn"
+                        text="Update Now"
+                        onAction="#handleUpdate"
+                        prefWidth="130.0"
+                        prefHeight="36.0"
+                        style="-fx-background-color: #0A4F34; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 12px; -fx-cursor: hand; -fx-background-radius: 8; -fx-font-family: 'Segoe UI', sans-serif;" />
+            </children>
+        </HBox>
+    </children>
+</VBox>

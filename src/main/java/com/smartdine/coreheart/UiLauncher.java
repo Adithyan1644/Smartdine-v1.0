@@ -47,8 +47,17 @@ public class UiLauncher extends Application {
         com.smartdine.service.ActivationService activationService = springContext.getBean(com.smartdine.service.ActivationService.class);
         boolean activated = activationService.isSystemActivated();
 
+        if (activated) {
+            java.util.Optional<com.smartdine.coreheart.SystemConfig> configOpt = activationService.getSystemConfig();
+            configOpt.ifPresent(config -> {
+                if (config.getRestaurantId() != null) {
+                    com.smartdine.coreheart.TenantContext.setRestaurantId(config.getRestaurantId());
+                }
+            });
+        }
+
         String fxmlPath = activated ? "/ui/login.fxml" : "/ui/activation.fxml";
-        String title = activated ? "SMARTDINE Login" : "SMARTDINE Setup Wizard";
+        String title = activated ? "Surabhi SmartDine Login" : "Surabhi SmartDine Setup Wizard";
 
         FXMLLoader loader = new FXMLLoader(getClass().getResource(fxmlPath));
         // This line is the magic: it allows Spring to @Autowire repositories into JavaFX Controllers!
@@ -72,7 +81,16 @@ public class UiLauncher extends Application {
         primaryStage.setScene(scene);
         primaryStage.show();
         primaryStage.setMaximized(true);
-        Platform.runLater(() -> primaryStage.setMaximized(true));
+        Platform.runLater(() -> {
+            primaryStage.setMaximized(true);
+            try {
+                com.smartdine.service.VersionCheckService versionService =
+                        springContext.getBean(com.smartdine.service.VersionCheckService.class);
+                versionService.checkForUpdatesAsync(primaryStage);
+            } catch (Exception e) {
+                System.out.println("[UiLauncher] Version check trigger note: " + e.getMessage());
+            }
+        });
     }
 
     @Override

@@ -468,6 +468,9 @@ public class UiDashboardController implements Initializable {
     private com.smartdine.repository.AddonItemRepository addonItemRepository;
 
     @Autowired
+    private com.smartdine.repository.BillingConfigRepository billingConfigRepository;
+
+    @Autowired
     private com.smartdine.service.ActivationService activationService;
 
     @Autowired
@@ -484,6 +487,12 @@ public class UiDashboardController implements Initializable {
     }
 
     public com.smartdine.coreheart.RestaurantSettings getEffectiveRestaurantSettings(UUID restaurantId) {
+        if (restaurantId != null) {
+            java.util.Optional<com.smartdine.coreheart.RestaurantSettings> byId = restaurantSettingsRepository.findByRestaurantId(restaurantId);
+            if (byId.isPresent()) {
+                return byId.get();
+            }
+        }
         return restaurantSettingsRepository.findAll().stream()
                 .findFirst()
                 .map(s -> {
@@ -643,8 +652,6 @@ public class UiDashboardController implements Initializable {
         }
 
         if (categoryComboBox != null) {
-            categoryComboBox.getItems().setAll("All Categories", "Starters", "Main Course", "Breads", "Sides",
-                    "Desserts");
             categoryComboBox.setValue("All Categories");
             categoryComboBox.valueProperty().addListener((observable, oldValue, newValue) -> {
                 populateMenuGrid();
@@ -946,10 +953,7 @@ public class UiDashboardController implements Initializable {
             TenantContext.setRestaurantId(restaurantId);
             try {
                 // 1. Fetch tables
-                var tablesList = tableRepository.findByRestaurantId(restaurantId);
-                if (tablesList.isEmpty()) {
-                    tablesList = tableRepository.findAll();
-                }
+                var tablesList = getAllTablesSynced(restaurantId);
 
                 // 2. Fetch active orders
                 var activeOrders = orderRepository.findByRestaurantIdAndStatusNotIn(restaurantId,
@@ -988,13 +992,13 @@ public class UiDashboardController implements Initializable {
 
                 // 6. Fetch platform stats (using optimized query for today's orders)
                 java.time.LocalDateTime startOfToday = java.time.LocalDate.now().atStartOfDay();
-                var platformTodayOrders = orderRepository.findByRestaurantIdAndStartedAtAfter(restaurantId, startOfToday);
+                var rawTodayOrders = orderRepository.findByRestaurantIdAndStartedAtAfter(restaurantId, startOfToday);
+                List<Order> platformTodayOrders = rawTodayOrders.stream()
+                        .filter(this::isPlatformOrder)
+                        .toList();
 
                 List<Order> platformActiveOrders = activeOrders.stream()
-                        .filter(o -> o.getSource() != null && (o.getSource().equalsIgnoreCase("ZOMATO") ||
-                                o.getSource().equalsIgnoreCase("SWIGGY") ||
-                                o.getSource().equalsIgnoreCase("ONLINE") ||
-                                o.getSource().equalsIgnoreCase("PLATFORM")))
+                        .filter(this::isPlatformOrder)
                         .toList();
 
                 // Update UI on JavaFX thread
@@ -1383,10 +1387,7 @@ public class UiDashboardController implements Initializable {
         CompletableFuture.runAsync(() -> {
             TenantContext.setRestaurantId(restaurantId);
             try {
-                var tablesList = tableRepository.findByRestaurantId(restaurantId);
-                if (tablesList.isEmpty()) {
-                    tablesList = tableRepository.findAll();
-                }
+                var tablesList = getAllTablesSynced(restaurantId);
                 var activeOrders = orderRepository.findByRestaurantIdAndStatusNotIn(restaurantId,
                         java.util.Arrays.asList(OrderStatus.PAID, OrderStatus.CANCELLED));
                 if (activeOrders.isEmpty()) {
@@ -2330,6 +2331,28 @@ public class UiDashboardController implements Initializable {
         billingMenuGrid.getChildren().clear();
 
         List<MenuItem> allItems = getAllMenuItemsForBilling();
+
+        // Dynamically build category list for categoryComboBox if needed
+        if (categoryComboBox != null) {
+            String currentVal = categoryComboBox.getValue();
+            java.util.Set<String> catSet = new java.util.LinkedHashSet<>();
+            catSet.add("All Categories");
+            for (MenuItem item : allItems) {
+                if (item.getCategoryName() != null && !item.getCategoryName().trim().isEmpty()) {
+                    catSet.add(item.getCategoryName().trim());
+                }
+            }
+            List<String> sortedCats = new ArrayList<>(catSet);
+            if (!categoryComboBox.getItems().equals(sortedCats)) {
+                categoryComboBox.getItems().setAll(sortedCats);
+                if (currentVal != null && sortedCats.contains(currentVal)) {
+                    categoryComboBox.setValue(currentVal);
+                } else {
+                    categoryComboBox.setValue("All Categories");
+                }
+            }
+        }
+
         String searchTxt = menuSearchField != null ? menuSearchField.getText().trim().toLowerCase() : "";
         String categoryVal = categoryComboBox != null ? categoryComboBox.getValue() : "All Categories";
 
@@ -2338,29 +2361,19 @@ public class UiDashboardController implements Initializable {
         for (MenuItem item : allItems) {
             // Search filter match
             if (!searchTxt.isEmpty()) {
-                boolean matchName = item.getName().toLowerCase().contains(searchTxt);
+                boolean matchName = item.getName() != null && item.getName().toLowerCase().contains(searchTxt);
                 boolean matchCode = item.getShortCode() != null
                         && item.getShortCode().toLowerCase().contains(searchTxt);
                 if (!matchName && !matchCode)
                     continue;
             }
 
-            // Category filter match
+            // Dynamic Category filter match
             if (categoryVal != null && !categoryVal.equals("All Categories")) {
                 String catName = item.getCategoryName();
-                if (catName == null)
+                if (catName == null || !catName.trim().equalsIgnoreCase(categoryVal.trim())) {
                     continue;
-                if (categoryVal.equals("Starters") && !catName.equalsIgnoreCase("Starters"))
-                    continue;
-                if (categoryVal.equals("Main Course") && !catName.equalsIgnoreCase("Main Course")
-                        && !catName.equalsIgnoreCase("mains"))
-                    continue;
-                if (categoryVal.equals("Breads") && !catName.equalsIgnoreCase("Breads"))
-                    continue;
-                if (categoryVal.equals("Sides") && !catName.equalsIgnoreCase("Sides"))
-                    continue;
-                if (categoryVal.equals("Desserts") && !catName.equalsIgnoreCase("Desserts"))
-                    continue;
+                }
             }
 
             // Card Builder
@@ -3371,9 +3384,20 @@ public class UiDashboardController implements Initializable {
                 }
             }
             java.math.BigDecimal taxableSubtotal = subtotal.subtract(discountAmt);
-            java.math.BigDecimal taxRate = java.math.BigDecimal.valueOf(0.025);
-            java.math.BigDecimal cgst = taxableSubtotal.multiply(taxRate);
-            java.math.BigDecimal sgst = taxableSubtotal.multiply(taxRate);
+            UUID resId = TenantContext.getRestaurantId();
+            if (resId == null) resId = getActiveRestaurantId();
+            com.smartdine.coreheart.RestaurantSettings sysSettings = getEffectiveRestaurantSettings(resId);
+            com.smartdine.coreheart.BillingConfig bConfig = billingConfigRepository.findFirstByOrderByIdAsc().orElseGet(com.smartdine.coreheart.BillingConfig::new);
+            boolean isTaxActive = (sysSettings == null || sysSettings.isTaxEnabled());
+
+            java.math.BigDecimal cgst = java.math.BigDecimal.ZERO;
+            java.math.BigDecimal sgst = java.math.BigDecimal.ZERO;
+
+            if (isTaxActive) {
+                java.math.BigDecimal taxRate = java.math.BigDecimal.valueOf(0.025);
+                cgst = taxableSubtotal.multiply(taxRate);
+                sgst = taxableSubtotal.multiply(taxRate);
+            }
             java.math.BigDecimal grandTotalVal = taxableSubtotal.add(cgst).add(sgst);
 
             Order order;
@@ -3639,9 +3663,20 @@ public class UiDashboardController implements Initializable {
                 }
 
                 java.math.BigDecimal taxableSubtotal = subtotal.subtract(discountAmt);
-                java.math.BigDecimal taxRate = java.math.BigDecimal.valueOf(0.025);
-                java.math.BigDecimal cgst = taxableSubtotal.multiply(taxRate);
-                java.math.BigDecimal sgst = taxableSubtotal.multiply(taxRate);
+                UUID resId2 = TenantContext.getRestaurantId();
+                if (resId2 == null) resId2 = getActiveRestaurantId();
+                com.smartdine.coreheart.RestaurantSettings sysSettings2 = getEffectiveRestaurantSettings(resId2);
+                com.smartdine.coreheart.BillingConfig bConfig2 = billingConfigRepository.findFirstByOrderByIdAsc().orElseGet(com.smartdine.coreheart.BillingConfig::new);
+                boolean isTaxActive2 = (sysSettings2 == null || sysSettings2.isTaxEnabled());
+
+                java.math.BigDecimal cgst = java.math.BigDecimal.ZERO;
+                java.math.BigDecimal sgst = java.math.BigDecimal.ZERO;
+
+                if (isTaxActive2) {
+                    java.math.BigDecimal taxRate = java.math.BigDecimal.valueOf(0.025);
+                    cgst = taxableSubtotal.multiply(taxRate);
+                    sgst = taxableSubtotal.multiply(taxRate);
+                }
                 java.math.BigDecimal grandTotalVal = taxableSubtotal.add(cgst).add(sgst);
 
                 currentActiveOrder.setSubTotal(subtotal);
@@ -3770,8 +3805,6 @@ public class UiDashboardController implements Initializable {
                     }
                 }
 
-                triggerThermalReceiptPrinting(currentActiveOrder);
-
                 // Mark all cart items as saved so the colour coding updates correctly
                 for (CartItem ci : cartList) {
                     ci.setSavedQuantity(ci.getQuantity());
@@ -3846,9 +3879,20 @@ public class UiDashboardController implements Initializable {
             }
 
             java.math.BigDecimal taxableSubtotal = subtotal.subtract(discountAmt);
-            java.math.BigDecimal taxRate = java.math.BigDecimal.valueOf(0.025);
-            java.math.BigDecimal cgst = taxableSubtotal.multiply(taxRate);
-            java.math.BigDecimal sgst = taxableSubtotal.multiply(taxRate);
+            UUID resId3 = TenantContext.getRestaurantId();
+            if (resId3 == null) resId3 = getActiveRestaurantId();
+            com.smartdine.coreheart.RestaurantSettings sysSettings3 = getEffectiveRestaurantSettings(resId3);
+            com.smartdine.coreheart.BillingConfig bConfig3 = billingConfigRepository.findFirstByOrderByIdAsc().orElseGet(com.smartdine.coreheart.BillingConfig::new);
+            boolean isTaxActive3 = (sysSettings3 == null || sysSettings3.isTaxEnabled());
+
+            java.math.BigDecimal cgst = java.math.BigDecimal.ZERO;
+            java.math.BigDecimal sgst = java.math.BigDecimal.ZERO;
+
+            if (isTaxActive3) {
+                java.math.BigDecimal taxRate = java.math.BigDecimal.valueOf(0.025);
+                cgst = taxableSubtotal.multiply(taxRate);
+                sgst = taxableSubtotal.multiply(taxRate);
+            }
             java.math.BigDecimal grandTotalVal = taxableSubtotal.add(cgst).add(sgst);
 
             Order order;
@@ -4404,9 +4448,9 @@ public class UiDashboardController implements Initializable {
         ComboBox<String> tableComboBox = new ComboBox<>();
         tableComboBox.setPromptText("Select Table");
 
-        // Fetch tables from database
         UUID restaurantId = TenantContext.getRestaurantId();
-        List<DiningTable> tables = tableRepository.findByRestaurantId(restaurantId);
+        if (restaurantId == null) restaurantId = getActiveRestaurantId();
+        List<DiningTable> tables = getAllTablesSynced(restaurantId);
 
         // Sort tables logically by table number
         tables.sort((t1, t2) -> {
@@ -4699,13 +4743,26 @@ public class UiDashboardController implements Initializable {
     // --- ORIGINAL DASHBOARD LOGIC ---
     private void saveFallbackTable(String number, int capacity, String area) {
         try {
+            UUID activeRid = getActiveRestaurantId();
+            DiningTable existing = tableRepository.findAll().stream()
+                    .filter(t -> t.getTableNumber() != null && t.getTableNumber().equalsIgnoreCase(number))
+                    .findFirst()
+                    .orElse(null);
+            if (existing != null) {
+                if (existing.getRestaurantId() == null || !existing.getRestaurantId().equals(activeRid)) {
+                    existing.setRestaurantId(activeRid);
+                    tableRepository.saveAndFlush(existing);
+                }
+                return;
+            }
+
             DiningTable table = new DiningTable();
-            table.setRestaurantId(TenantContext.getRestaurantId());
+            table.setRestaurantId(activeRid);
             table.setTableNumber(number);
             table.setCapacity(capacity);
             table.setAreaName(area);
             table.setStatus(TableStatus.AVAILABLE);
-            tableRepository.save(table);
+            tableRepository.saveAndFlush(table);
         } catch (Exception e) {
             System.out.println("Failed to save fallback table: " + e.getMessage());
         }
@@ -4802,27 +4859,72 @@ public class UiDashboardController implements Initializable {
         return Integer.compare(parts1.length, parts2.length);
     }
 
+    private List<DiningTable> getAllTablesSynced(UUID restaurantId) {
+        List<DiningTable> list = tableRepository.findByRestaurantId(restaurantId);
+        if (list == null || list.isEmpty()) {
+            list = tableRepository.findAll();
+        }
+        if (list == null || list.isEmpty()) {
+            saveFallbackTable("T-01", 4, "AC Area");
+            saveFallbackTable("T-02", 2, "AC Area");
+            saveFallbackTable("T-03", 4, "AC Area");
+            saveFallbackTable("T-04", 6, "AC Area");
+            saveFallbackTable("T-05", 2, "Garden");
+            saveFallbackTable("T-06", 4, "Garden");
+            saveFallbackTable("T-07", 4, "Garden");
+            saveFallbackTable("T-08", 8, "Garden");
+            list = tableRepository.findAll();
+        }
+
+        java.util.Map<String, DiningTable> uniqueMap = new java.util.LinkedHashMap<>();
+        for (DiningTable t : list) {
+            if (t.getTableNumber() == null || t.getTableNumber().trim().isEmpty() || t.getTableNumber().contains("_DUP_DELETED")) {
+                continue;
+            }
+            String norm = t.getTableNumber().trim().toUpperCase();
+            if (!uniqueMap.containsKey(norm)) {
+                if (t.getRestaurantId() == null || !t.getRestaurantId().equals(restaurantId)) {
+                    t.setRestaurantId(restaurantId);
+                    try { tableRepository.save(t); } catch (Exception ignored) {}
+                }
+                uniqueMap.put(norm, t);
+            } else {
+                DiningTable existing = uniqueMap.get(norm);
+                if (t.getStatus() != TableStatus.AVAILABLE && existing.getStatus() == TableStatus.AVAILABLE) {
+                    t.setRestaurantId(restaurantId);
+                    try { tableRepository.save(t); } catch (Exception ignored) {}
+                    uniqueMap.put(norm, t);
+                }
+            }
+        }
+        return new ArrayList<>(uniqueMap.values());
+    }
+
     public void loadTablesToUi() {
         UUID restaurantId = getActiveRestaurantId();
         CompletableFuture.runAsync(() -> {
             TenantContext.setRestaurantId(restaurantId);
             try {
-                var tablesList = tableRepository.findByRestaurantId(restaurantId);
-
-                if (tablesList.isEmpty()) {
-                    saveFallbackTable("T-01", 4, "AC Area");
-                    saveFallbackTable("T-02", 2, "AC Area");
-                    saveFallbackTable("T-03", 4, "AC Area");
-                    saveFallbackTable("T-04", 6, "AC Area");
-                    saveFallbackTable("T-05", 2, "Garden");
-                    saveFallbackTable("T-06", 4, "Garden");
-                    saveFallbackTable("T-07", 4, "Garden");
-                    saveFallbackTable("T-08", 8, "Garden");
-                    tablesList = tableRepository.findByRestaurantId(restaurantId);
-                }
+                var tablesList = getAllTablesSynced(restaurantId);
 
                 var activeOrders = orderRepository.findByRestaurantIdAndStatusNotIn(restaurantId,
                         java.util.Arrays.asList(OrderStatus.PAID, OrderStatus.CANCELLED));
+
+                if (activeOrders.isEmpty()) {
+                    List<Order> allExistingOrders = orderRepository.findAll().stream()
+                            .filter(o -> o.getStatus() != OrderStatus.PAID && o.getStatus() != OrderStatus.CANCELLED)
+                            .toList();
+                    if (!allExistingOrders.isEmpty()) {
+                        for (Order o : allExistingOrders) {
+                            o.setRestaurantId(restaurantId);
+                        }
+                        try {
+                            orderRepository.saveAllAndFlush(allExistingOrders);
+                        } catch (Exception ignored) {}
+                        activeOrders = orderRepository.findByRestaurantIdAndStatusNotIn(restaurantId,
+                                java.util.Arrays.asList(OrderStatus.PAID, OrderStatus.CANCELLED));
+                    }
+                }
 
                 List<KOT> activeKots = new ArrayList<>();
                 try {
@@ -7314,15 +7416,25 @@ public class UiDashboardController implements Initializable {
     public class JavaMenuBridge {
         public String getMenuItemsJson() {
             try {
-                TenantContext.setRestaurantId(TenantContext.getRestaurantId());
-                List<MenuItem> items = getAllMenuItemsForBilling();
+                UUID rid = TenantContext.getRestaurantId();
+                if (rid == null) {
+                    rid = getActiveRestaurantId();
+                }
+                TenantContext.setRestaurantId(rid);
+                List<MenuItem> items = menuRepository.findByRestaurantIdAndIsDeletedFalse(rid);
+                if (items.isEmpty()) {
+                    items = menuRepository.findAll().stream().filter(i -> !i.isDeleted()).toList();
+                }
+                if (items.isEmpty()) {
+                    items = getAllMenuItemsForBilling();
+                }
                 List<java.util.Map<String, Object>> result = new ArrayList<>();
                 for (MenuItem item : items) {
                     java.util.Map<String, Object> m = new java.util.HashMap<>();
                     m.put("dbId", item.getId().toString());
                     m.put("id", item.getShortCode() != null ? item.getShortCode() : "ITEM");
                     m.put("name", item.getName());
-                    m.put("category", item.getCategoryName() != null ? item.getCategoryName() : "Mains");
+                    m.put("category", item.getCategoryName() != null ? item.getCategoryName() : "General");
                     m.put("price", item.getPrice() != null ? item.getPrice().doubleValue() : 0.0);
                     m.put("veg", item.isVeg());
                     m.put("isTodaysMenu", item.isTodaysMenu());
@@ -7338,7 +7450,11 @@ public class UiDashboardController implements Initializable {
 
         public String saveMenuItemJson(String json) {
             try {
-                TenantContext.setRestaurantId(TenantContext.getRestaurantId());
+                UUID rid = TenantContext.getRestaurantId();
+                if (rid == null) {
+                    rid = getActiveRestaurantId();
+                }
+                TenantContext.setRestaurantId(rid);
                 ObjectMapper mapper = new ObjectMapper();
                 java.util.Map<String, Object> map = mapper.readValue(json, java.util.Map.class);
 
@@ -7646,79 +7762,225 @@ public class UiDashboardController implements Initializable {
         }
     }
 
+    private String centerText(String text, int width) {
+        if (text == null) text = "";
+        if (text.length() >= width) return text.substring(0, width);
+        int padding = (width - text.length()) / 2;
+        return " ".repeat(padding) + text;
+    }
+
+    private String formatTwoColumn(String left, String right, int width) {
+        if (left == null) left = "";
+        if (right == null) right = "";
+        int spaces = width - left.length() - right.length();
+        if (spaces <= 0) {
+            return left + " " + right;
+        }
+        return left + " ".repeat(spaces) + right;
+    }
+
     private void triggerThermalReceiptPrinting(Order order) {
         try {
-            System.out.println("🖨️ Printing receipt for order: " + order.getOrderNumber());
+            System.out.println("🖨️ Printing thermal receipt for order: " + (order != null ? order.getOrderNumber() : "NEW"));
 
-            // Build the receipt text
+            com.smartdine.coreheart.BillingConfig bConfig = billingConfigRepository.findFirstByOrderByIdAsc()
+                    .orElseGet(com.smartdine.coreheart.BillingConfig::new);
+
+            int maxCols = "58mm".equalsIgnoreCase(bConfig.getPaperSize()) ? 32 : 48;
+            String lineSeparator = "=".repeat(maxCols) + "\n";
+            String dashSeparator = "-".repeat(maxCols) + "\n";
+
             StringBuilder receipt = new StringBuilder();
-            receipt.append("      SURABHI SMARTDINE      \n");
-            receipt.append("-----------------------------\n");
-            receipt.append("Date: ").append(LocalDateTime.now().toString().substring(0, 16).replace("T", " "))
-                    .append("\n");
-            if (order.getType() == OrderType.DINE_IN) {
-                receipt.append("Table: ").append(order.getTableName() != null ? order.getTableName() : "N/A")
-                        .append("\n");
-            } else if (order.getType() == OrderType.DELIVERY) {
-                receipt.append("Type: Delivery\n");
-                receipt.append("Cust: ").append(order.getCustomerName()).append("\n");
-                receipt.append("Phone: ").append(order.getCustomerPhone()).append("\n");
-            } else {
-                receipt.append("Type: Pickup\n");
-                receipt.append("Cust: ").append(order.getCustomerName()).append("\n");
-            }
-            receipt.append("-----------------------------\n");
-            for (CartItem ci : cartList) {
-                receipt.append(String.format("%-18s x%d\n", ci.getItem().getName(), ci.getQuantity()));
-                receipt.append(String.format("                %8.2f\n",
-                        ci.getItem().getPrice().doubleValue() * ci.getQuantity()));
-            }
-            receipt.append("-----------------------------\n");
-            double subTotalVal = order.getSubTotal() != null ? order.getSubTotal().doubleValue() : 0.0;
-            double discountVal = order.getDiscount() != null ? order.getDiscount().doubleValue() : 0.0;
-            double cgstVal = order.getCgst() != null ? order.getCgst().doubleValue() : 0.0;
-            double sgstVal = order.getSgst() != null ? order.getSgst().doubleValue() : 0.0;
-            double grandTotalVal = order.getGrandTotal() != null ? order.getGrandTotal().doubleValue() : 0.0;
-            double receivedVal = order.getReceivedAmount() != null ? order.getReceivedAmount().doubleValue() : 0.0;
-            double changeVal = order.getChangeAmount() != null ? order.getChangeAmount().doubleValue() : 0.0;
-            String payModeStr = order.getPaymentMode() != null ? order.getPaymentMode() : "PENDING";
 
-            receipt.append(String.format("Subtotal:       %8.2f\n", subTotalVal));
-            if (discountVal > 0.0) {
-                receipt.append(String.format("Discount:      -%8.2f\n", discountVal));
+            // 1. Header Title & Address
+            String restName = bConfig.getRestaurantName() != null && !bConfig.getRestaurantName().isEmpty() 
+                    ? bConfig.getRestaurantName() : "Surabhi Foods";
+            receipt.append(centerText(restName, maxCols)).append("\n");
+
+            if (bConfig.getAddressLine1() != null && !bConfig.getAddressLine1().trim().isEmpty()) {
+                receipt.append(centerText(bConfig.getAddressLine1().trim(), maxCols)).append("\n");
             }
-            receipt.append(String.format("CGST (2.5%):    %8.2f\n", cgstVal));
-            receipt.append(String.format("SGST (2.5%):    %8.2f\n", sgstVal));
-            receipt.append("-----------------------------\n");
-            receipt.append(String.format("GRAND TOTAL:    %8.2f\n", grandTotalVal));
-            receipt.append(String.format("Paid (%s):     %8.2f\n", payModeStr, receivedVal));
-            receipt.append(String.format("Change:         %8.2f\n", changeVal));
-            receipt.append("-----------------------------\n");
-            receipt.append("    Thank you for dining!    \n\n\n\n");
+            if (bConfig.getGstin() != null && !bConfig.getGstin().trim().isEmpty()) {
+                receipt.append(centerText("GSTIN: " + bConfig.getGstin().trim(), maxCols)).append("\n");
+            }
+
+            receipt.append(lineSeparator);
+
+            // 2. Order Metadata & Type (Table T-01 vs Delivery vs Pickup)
+            String dateStr = LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("dd-MMM-yy HH:mm"));
+            receipt.append("Date: ").append(dateStr).append("\n");
+
+            OrderType orderType = (order != null && order.getType() != null) ? order.getType() : selectedOrderType;
+            if (orderType == OrderType.DINE_IN) {
+                String tableName = (order != null && order.getTableName() != null) ? order.getTableName() 
+                        : (currentDiningTable != null ? currentDiningTable.getTableNumber() : "T-01");
+                receipt.append(formatTwoColumn("Type: Table Order (" + tableName + ")", "Table: " + tableName, maxCols)).append("\n");
+            } else if (orderType == OrderType.DELIVERY) {
+                receipt.append("Type: Delivery\n");
+                String cName = (order != null && order.getCustomerName() != null) ? order.getCustomerName() : currentCustomerName;
+                String cPhone = (order != null && order.getCustomerPhone() != null) ? order.getCustomerPhone() : currentCustomerPhone;
+                if (!cName.isEmpty()) {
+                    receipt.append("Cust: ").append(cName).append("\n");
+                }
+                if (!cPhone.isEmpty()) {
+                    receipt.append("Phone: ").append(cPhone).append("\n");
+                }
+            } else { // PICK_UP / TAKEAWAY
+                receipt.append("Type: Pickup\n");
+                String cName = (order != null && order.getCustomerName() != null) ? order.getCustomerName() : currentCustomerName;
+                if (!cName.isEmpty()) {
+                    receipt.append("Cust: ").append(cName).append("\n");
+                }
+            }
+
+            receipt.append(dashSeparator);
+
+            // 3. Item Columns Header
+            if (maxCols == 32) {
+                receipt.append(String.format("%-14s %3s %6s %6s\n", "Item", "Qty", "Rate", "Amt"));
+            } else {
+                receipt.append(String.format("%-24s %5s %8s %8s\n", "Item", "Qty", "Rate", "Amt"));
+            }
+            receipt.append(dashSeparator);
+
+            // 4. Item Rows
+            double calcSubtotal = 0.0;
+            for (CartItem ci : cartList) {
+                String name = ci.getItem().getName();
+                int qty = ci.getQuantity();
+                double rate = ci.getItem().getPrice().doubleValue();
+                double itemTotal = qty * rate;
+                calcSubtotal += itemTotal;
+
+                if (maxCols == 32) {
+                    String truncName = name.length() > 14 ? name.substring(0, 14) : name;
+                    receipt.append(String.format("%-14s %3d %6.0f %6.0f\n", truncName, qty, rate, itemTotal));
+                } else {
+                    String truncName = name.length() > 24 ? name.substring(0, 24) : name;
+                    receipt.append(String.format("%-24s %5d %8.2f %8.2f\n", truncName, qty, rate, itemTotal));
+                }
+            }
+
+            receipt.append(dashSeparator);
+
+            // 5. Totals & Taxes (Strictly enforce tax enablement toggle, delivery fee, and packing fee)
+            UUID targetRestaurantId = (order != null && order.getRestaurantId() != null) ? order.getRestaurantId() : getActiveRestaurantId();
+            com.smartdine.coreheart.RestaurantSettings sysSettings = getEffectiveRestaurantSettings(targetRestaurantId);
+            boolean taxEnabled = (sysSettings == null || sysSettings.isTaxEnabled());
+
+            double subTotalVal = (order != null && order.getSubTotal() != null) ? order.getSubTotal().doubleValue() : calcSubtotal;
+            double discountVal = (order != null && order.getDiscount() != null) ? order.getDiscount().doubleValue() : discountValue;
+
+            double deliveryChargeVal = 0.0;
+            if (orderType == OrderType.DELIVERY && sysSettings != null && sysSettings.isDeliveryChargeEnabled()) {
+                deliveryChargeVal = sysSettings.getDefaultDeliveryFee();
+            }
+
+            double packingChargeVal = 0.0;
+            if ((orderType == OrderType.DELIVERY || orderType == OrderType.PICK_UP) && sysSettings != null && sysSettings.isPackingChargeEnabled()) {
+                packingChargeVal = sysSettings.getDefaultPackingFee();
+            }
+
+            double cgstVal = 0.0;
+            double sgstVal = 0.0;
+            if (taxEnabled) {
+                if (order != null && order.getCgst() != null && order.getCgst().doubleValue() > 0.0) {
+                    cgstVal = order.getCgst().doubleValue();
+                    sgstVal = (order.getSgst() != null) ? order.getSgst().doubleValue() : cgstVal;
+                } else {
+                    cgstVal = (subTotalVal - discountVal) * 0.025;
+                    sgstVal = (subTotalVal - discountVal) * 0.025;
+                }
+            }
+
+            double grandTotalVal = (subTotalVal - discountVal + deliveryChargeVal + packingChargeVal + (taxEnabled ? (cgstVal + sgstVal) : 0.0));
+
+            receipt.append(formatTwoColumn("Subtotal:", String.format("Rs %.2f", subTotalVal), maxCols)).append("\n");
+            if (discountVal > 0.0) {
+                receipt.append(formatTwoColumn("Discount:", String.format("-Rs %.2f", discountVal), maxCols)).append("\n");
+            }
+            if (deliveryChargeVal > 0.0) {
+                receipt.append(formatTwoColumn("Delivery Charge:", String.format("Rs %.2f", deliveryChargeVal), maxCols)).append("\n");
+            }
+            if (packingChargeVal > 0.0) {
+                receipt.append(formatTwoColumn("Packing Charge:", String.format("Rs %.2f", packingChargeVal), maxCols)).append("\n");
+            }
+
+            // Only print CGST / SGST lines if tax is enabled in system & settings
+            if (taxEnabled && cgstVal > 0.0) {
+                receipt.append(formatTwoColumn("CGST (2.5%):", String.format("Rs %.2f", cgstVal), maxCols)).append("\n");
+            }
+            if (taxEnabled && sgstVal > 0.0) {
+                receipt.append(formatTwoColumn("SGST (2.5%):", String.format("Rs %.2f", sgstVal), maxCols)).append("\n");
+            }
+            receipt.append(dashSeparator);
+            receipt.append(formatTwoColumn("Grand Total:", String.format("Rs %.2f", grandTotalVal), maxCols)).append("\n");
+            receipt.append(dashSeparator);
+
+            // 6. Footer Message (Single newline to prevent paper wastage)
+            String footerMsg = bConfig.getFooterMessage() != null && !bConfig.getFooterMessage().isEmpty() 
+                    ? bConfig.getFooterMessage() : "Thank you for dining!";
+            receipt.append(centerText(footerMsg, maxCols)).append("\n");
 
             String printText = receipt.toString();
 
-            // Run in thread to not block UI
+            // Run print job in background thread with Zero-Waste ESC/POS byte sequence
             Thread printThread = new Thread(() -> {
                 try {
-                    javax.print.PrintService service = javax.print.PrintServiceLookup.lookupDefaultPrintService();
-                    if (service != null) {
-                        javax.print.DocPrintJob job = service.createPrintJob();
+                    javax.print.PrintService[] services = javax.print.PrintServiceLookup.lookupPrintServices(null, null);
+                    javax.print.PrintService targetService = null;
+
+                    if (services != null && services.length > 0) {
+                        for (javax.print.PrintService ps : services) {
+                            String pName = ps.getName().toLowerCase();
+                            if (pName.contains("pos") || pName.contains("80") || pName.contains("periperi") 
+                                    || pName.contains("thermal") || pName.contains("receipt") || pName.contains("epson") 
+                                    || pName.contains("xprinter") || pName.contains("tvse")) {
+                                targetService = ps;
+                                System.out.println("🖨️ Matched connected thermal printer: " + ps.getName());
+                                break;
+                            }
+                        }
+                    }
+
+                    if (targetService == null) {
+                        targetService = javax.print.PrintServiceLookup.lookupDefaultPrintService();
+                    }
+
+                    if (targetService != null) {
+                        // Construct zero paper waste ESC/POS byte stream
+                        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+                        
+                        // ESC @ (Initialize Printer)
+                        baos.write(new byte[]{ 0x1B, 0x40 });
+
+                        // UTF-8 Receipt Text
+                        baos.write(printText.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+                        // ESC d 2 (Feed minimal 2 lines to reach tear line)
+                        baos.write(new byte[]{ 0x1B, 0x64, 0x02 });
+
+                        // GS V 66 0 (Partial paper cut)
+                        baos.write(new byte[]{ 0x1D, 0x56, 0x42, 0x00 });
+
+                        byte[] zeroWasteBytes = baos.toByteArray();
+
+                        javax.print.DocPrintJob job = targetService.createPrintJob();
                         javax.print.DocFlavor flavor = javax.print.DocFlavor.INPUT_STREAM.AUTOSENSE;
-                        java.io.ByteArrayInputStream bais = new java.io.ByteArrayInputStream(printText.getBytes());
+                        java.io.ByteArrayInputStream bais = new java.io.ByteArrayInputStream(zeroWasteBytes);
                         javax.print.Doc doc = new javax.print.SimpleDoc(bais, flavor, null);
                         job.print(doc, null);
-                        System.out.println("✅ Sent receipt to default printer: " + service.getName());
+                        System.out.println("✅ Zero-waste thermal receipt printed on printer: " + targetService.getName());
                     } else {
-                        System.out.println("⚠️ No default printer configured.");
+                        System.out.println("⚠️ No thermal printer found on Windows system.");
                     }
                 } catch (Exception ex) {
-                    System.out.println("❌ Printer Error: " + ex.getMessage());
+                    System.err.println("❌ Printer Error: " + ex.getMessage());
                 }
             });
             printThread.start();
         } catch (Exception e) {
-            System.out.println("Failed to trigger printer: " + e.getMessage());
+            System.err.println("Failed to trigger printer: " + e.getMessage());
         }
     }
 
@@ -8228,23 +8490,23 @@ public class UiDashboardController implements Initializable {
         }
 
         VBox mainContainer = new VBox(16);
-        mainContainer.setPadding(new Insets(20));
-        mainContainer.setStyle("-fx-pref-width: 480px; -fx-background-color: #FFFFFF;");
+        mainContainer.setPadding(new Insets(24));
+        mainContainer.setStyle("-fx-pref-width: 890px; -fx-min-width: 890px; -fx-background-color: #F8FAFC;");
 
-        Label titleLabel = new Label("Surabhi SmartDine — Restaurant Settings");
-        titleLabel.setStyle("-fx-font-size: 18px; -fx-font-weight: 900; -fx-text-fill: #0F172A;");
+        Label titleLabel = new Label("Surabhi SmartDine — Restaurant Settings & Configuration");
+        titleLabel.setStyle("-fx-font-size: 20px; -fx-font-weight: 900; -fx-text-fill: #0F172A;");
 
         UUID rid = TenantContext.getRestaurantId();
         if (rid == null) rid = getActiveRestaurantId();
         final UUID restaurantId = rid;
 
         com.smartdine.coreheart.RestaurantSettings settings = getEffectiveRestaurantSettings(restaurantId);
-
         com.smartdine.coreheart.SystemConfig config = systemConfigRepository.findAll().stream().findFirst().orElse(new com.smartdine.coreheart.SystemConfig());
+        final com.smartdine.coreheart.BillingConfig bConfig = billingConfigRepository.findFirstByOrderByIdAsc().orElseGet(com.smartdine.coreheart.BillingConfig::new);
 
         // 1. DELIVERY CHARGES CARD
-        VBox deliveryCard = new VBox(8);
-        deliveryCard.setStyle("-fx-background-color: #F8FAFC; -fx-border-color: #E2E8F0; -fx-border-radius: 10px; -fx-background-radius: 10px; -fx-padding: 12;");
+        VBox deliveryCard = new VBox(10);
+        deliveryCard.setStyle("-fx-background-color: #FFFFFF; -fx-border-color: #E2E8F0; -fx-border-radius: 10px; -fx-background-radius: 10px; -fx-padding: 16;");
         
         javafx.scene.control.CheckBox delCheckBox = new javafx.scene.control.CheckBox("Enable Delivery Charges");
         delCheckBox.setSelected(settings.isDeliveryChargeEnabled());
@@ -8262,8 +8524,8 @@ public class UiDashboardController implements Initializable {
         deliveryCard.getChildren().addAll(delCheckBox, delFeeRow);
 
         // 2. PACKING CHARGES CARD
-        VBox packingCard = new VBox(8);
-        packingCard.setStyle("-fx-background-color: #F8FAFC; -fx-border-color: #E2E8F0; -fx-border-radius: 10px; -fx-background-radius: 10px; -fx-padding: 12;");
+        VBox packingCard = new VBox(10);
+        packingCard.setStyle("-fx-background-color: #FFFFFF; -fx-border-color: #E2E8F0; -fx-border-radius: 10px; -fx-background-radius: 10px; -fx-padding: 16;");
         
         javafx.scene.control.CheckBox packCheckBox = new javafx.scene.control.CheckBox("Enable Packing Charges");
         packCheckBox.setSelected(settings.isPackingChargeEnabled());
@@ -8281,8 +8543,8 @@ public class UiDashboardController implements Initializable {
         packingCard.getChildren().addAll(packCheckBox, packFeeRow);
 
         // 3. TAX SETTINGS CARD (CGST & SGST)
-        VBox taxCard = new VBox(8);
-        taxCard.setStyle("-fx-background-color: #F8FAFC; -fx-border-color: #E2E8F0; -fx-border-radius: 10px; -fx-background-radius: 10px; -fx-padding: 12;");
+        VBox taxCard = new VBox(10);
+        taxCard.setStyle("-fx-background-color: #FFFFFF; -fx-border-color: #E2E8F0; -fx-border-radius: 10px; -fx-background-radius: 10px; -fx-padding: 16;");
         
         javafx.scene.control.CheckBox taxCheckBox = new javafx.scene.control.CheckBox("Enable Tax (CGST & SGST)");
         taxCheckBox.setSelected(settings.isTaxEnabled());
@@ -8308,12 +8570,16 @@ public class UiDashboardController implements Initializable {
         taxRow.getChildren().addAll(cgstBox, sgstBox);
         taxCard.getChildren().addAll(taxCheckBox, taxRow);
 
-        // 4. ADDON ITEMS MANAGER SECTION
-        VBox addonCard = new VBox(10);
-        addonCard.setStyle("-fx-background-color: #F8FAFC; -fx-border-color: #E2E8F0; -fx-border-radius: 10px; -fx-background-radius: 10px; -fx-padding: 12;");
+        VBox leftColumn = new VBox(14);
+        leftColumn.getChildren().addAll(deliveryCard, packingCard, taxCard);
+        HBox.setHgrow(leftColumn, Priority.ALWAYS);
+
+        // 4. ADDON ITEMS MANAGER SECTION (Right Column)
+        VBox addonCard = new VBox(12);
+        addonCard.setStyle("-fx-background-color: #FFFFFF; -fx-border-color: #E2E8F0; -fx-border-radius: 10px; -fx-background-radius: 10px; -fx-padding: 16;");
 
         Label addonTitle = new Label("Addon Items & Extras Catalog");
-        addonTitle.setStyle("-fx-font-size: 13px; -fx-font-weight: bold; -fx-text-fill: #0F172A;");
+        addonTitle.setStyle("-fx-font-size: 14px; -fx-font-weight: bold; -fx-text-fill: #0F172A;");
 
         FlowPane addonsListPane = new FlowPane();
         addonsListPane.setHgap(6);
@@ -8325,7 +8591,7 @@ public class UiDashboardController implements Initializable {
             for (com.smartdine.coreheart.AddonItem addon : currentAddons) {
                 HBox chip = new HBox(6);
                 chip.setAlignment(Pos.CENTER_LEFT);
-                chip.setStyle("-fx-background-color: #FFFFFF; -fx-border-color: #CBD5E1; -fx-border-radius: 14px; -fx-background-radius: 14px; -fx-padding: 4 10;");
+                chip.setStyle("-fx-background-color: #F1F5F9; -fx-border-color: #CBD5E1; -fx-border-radius: 14px; -fx-background-radius: 14px; -fx-padding: 4 10;");
 
                 Label lbl = new Label(addon.getName() + " (₹" + addon.getPrice() + ")");
                 lbl.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #334155;");
@@ -8351,7 +8617,7 @@ public class UiDashboardController implements Initializable {
         addAddonRow.setAlignment(Pos.CENTER_LEFT);
 
         javafx.scene.control.TextField addonNameField = new javafx.scene.control.TextField();
-        addonNameField.setPromptText("Addon Name (e.g. Cheese)");
+        addonNameField.setPromptText("Addon Name (e.g. Extra Cheese)");
         addonNameField.setStyle("-fx-background-color: #FFFFFF; -fx-border-color: #CBD5E1; -fx-border-radius: 6px; -fx-background-radius: 6px; -fx-padding: 6; -fx-font-size: 12px;");
         HBox.setHgrow(addonNameField, Priority.ALWAYS);
 
@@ -8360,7 +8626,7 @@ public class UiDashboardController implements Initializable {
         addonPriceField.setPrefWidth(90);
         addonPriceField.setStyle("-fx-background-color: #FFFFFF; -fx-border-color: #CBD5E1; -fx-border-radius: 6px; -fx-background-radius: 6px; -fx-padding: 6; -fx-font-size: 12px;");
 
-        Button addAddonBtn = new Button("+ Add");
+        Button addAddonBtn = new Button("+ Add Addon");
         addAddonBtn.setStyle("-fx-background-color: #10B981; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6px; -fx-padding: 6 12; -fx-cursor: hand;");
         addAddonBtn.setOnAction(e -> {
             String name = addonNameField.getText() != null ? addonNameField.getText().trim() : "";
@@ -8383,13 +8649,181 @@ public class UiDashboardController implements Initializable {
         addAddonRow.getChildren().addAll(addonNameField, addonPriceField, addAddonBtn);
         addonCard.getChildren().addAll(addonTitle, addonsListPane, addAddonRow);
 
-        mainContainer.getChildren().addAll(titleLabel, deliveryCard, packingCard, taxCard, addonCard);
+        // 5. THERMAL RECEIPT SLIP CARD (Styled to look like a physical thermal paper slip)
+        VBox receiptPaperCard = new VBox(8);
+        receiptPaperCard.setStyle("-fx-background-color: #FFFFFF; -fx-border-color: #CBD5E1; -fx-border-radius: 6px; -fx-background-radius: 6px; -fx-padding: 16; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.1), 6, 0, 0, 2);");
+        receiptPaperCard.setAlignment(Pos.TOP_CENTER);
+
+        // Header Title (Editable TextField)
+        javafx.scene.control.TextField restNameBillField = new javafx.scene.control.TextField(
+            bConfig.getRestaurantName() != null && !bConfig.getRestaurantName().isEmpty() ? bConfig.getRestaurantName() : "Surabhi Foods"
+        );
+        restNameBillField.setStyle("-fx-font-size: 15px; -fx-font-weight: 900; -fx-alignment: center; -fx-background-color: #F8FAFC; -fx-border-color: #CBD5E1; -fx-border-radius: 4px; -fx-padding: 5;");
+
+        // Address Line (Editable TextField)
+        javafx.scene.control.TextField addressBillField = new javafx.scene.control.TextField(
+            bConfig.getAddressLine1() != null && !bConfig.getAddressLine1().isEmpty() ? bConfig.getAddressLine1() : "123, Forest Road, Mum"
+        );
+        addressBillField.setPromptText("123, Forest Road, Mum");
+        addressBillField.setStyle("-fx-font-size: 11px; -fx-alignment: center; -fx-background-color: #F8FAFC; -fx-border-color: #CBD5E1; -fx-border-radius: 4px; -fx-padding: 4;");
+
+        // GSTIN Row with CheckBox Toggle
+        HBox gstinRow = new HBox(6);
+        gstinRow.setAlignment(Pos.CENTER);
+        javafx.scene.control.CheckBox enableGstinCheck = new javafx.scene.control.CheckBox("GSTIN:");
+        boolean hasGstin = bConfig.getGstin() != null && !bConfig.getGstin().trim().isEmpty();
+        enableGstinCheck.setSelected(hasGstin);
+        enableGstinCheck.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #334155;");
+
+        javafx.scene.control.TextField gstinBillField = new javafx.scene.control.TextField(
+            hasGstin ? bConfig.getGstin() : "27AAAAA1111A1Z1"
+        );
+        gstinBillField.setPromptText("27AAAAA1111A1Z1");
+        gstinBillField.setDisable(!enableGstinCheck.isSelected());
+        gstinBillField.setStyle("-fx-font-size: 11px; -fx-background-color: #F8FAFC; -fx-border-color: #CBD5E1; -fx-border-radius: 4px; -fx-padding: 4;");
+        HBox.setHgrow(gstinBillField, Priority.ALWAYS);
+
+        enableGstinCheck.setOnAction(e -> gstinBillField.setDisable(!enableGstinCheck.isSelected()));
+        gstinRow.getChildren().addAll(enableGstinCheck, gstinBillField);
+
+        Label dash1 = new Label("----------------------------------------------");
+        dash1.setStyle("-fx-font-family: 'Courier New', monospace; -fx-text-fill: #64748B; -fx-font-weight: bold; -fx-font-size: 11px;");
+
+        // Mock Receipt Order Details
+        HBox metaRow1 = new HBox();
+        Label metaLeft1 = new Label("Date: 30-Jul-26");
+        metaLeft1.setStyle("-fx-font-family: 'Courier New', monospace; -fx-font-size: 11px;");
+        metaRow1.getChildren().addAll(metaLeft1);
+
+        HBox metaRow2 = new HBox();
+        Label metaLeft2 = new Label("Table: T-12");
+        Label metaRight2 = new Label("Waiter: John");
+        metaLeft2.setStyle("-fx-font-family: 'Courier New', monospace; -fx-font-size: 11px;");
+        metaRight2.setStyle("-fx-font-family: 'Courier New', monospace; -fx-font-size: 11px;");
+        Region sp2 = new Region(); HBox.setHgrow(sp2, Priority.ALWAYS);
+        metaRow2.getChildren().addAll(metaLeft2, sp2, metaRight2);
+
+        Label dash2 = new Label("----------------------------------------------");
+        dash2.setStyle("-fx-font-family: 'Courier New', monospace; -fx-text-fill: #64748B; -fx-font-weight: bold; -fx-font-size: 11px;");
+
+        // Item Header Row
+        HBox itemHeaderRow = new HBox();
+        Label ih1 = new Label("Item");  ih1.setStyle("-fx-font-family: 'Courier New', monospace; -fx-font-weight: bold; -fx-font-size: 11px;");
+        Label ih2 = new Label("Qty");   ih2.setStyle("-fx-font-family: 'Courier New', monospace; -fx-font-weight: bold; -fx-font-size: 11px;");
+        Label ih3 = new Label("Rate");  ih3.setStyle("-fx-font-family: 'Courier New', monospace; -fx-font-weight: bold; -fx-font-size: 11px;");
+        Label ih4 = new Label("Amt");   ih4.setStyle("-fx-font-family: 'Courier New', monospace; -fx-font-weight: bold; -fx-font-size: 11px;");
+        Region hsp1 = new Region(); HBox.setHgrow(hsp1, Priority.ALWAYS);
+        Region hsp2 = new Region(); HBox.setHgrow(hsp2, Priority.ALWAYS);
+        Region hsp3 = new Region(); HBox.setHgrow(hsp3, Priority.ALWAYS);
+        itemHeaderRow.getChildren().addAll(ih1, hsp1, ih2, hsp2, ih3, hsp3, ih4);
+
+        Label dash3 = new Label("----------------------------------------------");
+        dash3.setStyle("-fx-font-family: 'Courier New', monospace; -fx-text-fill: #64748B; -fx-font-weight: bold; -fx-font-size: 11px;");
+
+        // Item 1
+        HBox itmRow1 = new HBox();
+        Label r1_1 = new Label("Surabhi Forest"); r1_1.setStyle("-fx-font-family: 'Courier New', monospace; -fx-font-size: 11px;");
+        Label r1_2 = new Label("2");              r1_2.setStyle("-fx-font-family: 'Courier New', monospace; -fx-font-size: 11px;");
+        Label r1_3 = new Label("250");            r1_3.setStyle("-fx-font-family: 'Courier New', monospace; -fx-font-size: 11px;");
+        Label r1_4 = new Label("500");            r1_4.setStyle("-fx-font-family: 'Courier New', monospace; -fx-font-size: 11px;");
+        Region isp1 = new Region(); HBox.setHgrow(isp1, Priority.ALWAYS);
+        Region isp2 = new Region(); HBox.setHgrow(isp2, Priority.ALWAYS);
+        Region isp3 = new Region(); HBox.setHgrow(isp3, Priority.ALWAYS);
+        itmRow1.getChildren().addAll(r1_1, isp1, r1_2, isp2, r1_3, isp3, r1_4);
+
+        // Item 2
+        HBox itmRow2 = new HBox();
+        Label r2_1 = new Label("Jeera Rice");     r2_1.setStyle("-fx-font-family: 'Courier New', monospace; -fx-font-size: 11px;");
+        Label r2_2 = new Label("1");              r2_2.setStyle("-fx-font-family: 'Courier New', monospace; -fx-font-size: 11px;");
+        Label r2_3 = new Label("120");            r2_3.setStyle("-fx-font-family: 'Courier New', monospace; -fx-font-size: 11px;");
+        Label r2_4 = new Label("120");            r2_4.setStyle("-fx-font-family: 'Courier New', monospace; -fx-font-size: 11px;");
+        Region jsp1 = new Region(); HBox.setHgrow(jsp1, Priority.ALWAYS);
+        Region jsp2 = new Region(); HBox.setHgrow(jsp2, Priority.ALWAYS);
+        Region jsp3 = new Region(); HBox.setHgrow(jsp3, Priority.ALWAYS);
+        itmRow2.getChildren().addAll(r2_1, jsp1, r2_2, jsp2, r2_3, jsp3, r2_4);
+
+        Label dash4 = new Label("----------------------------------------------");
+        dash4.setStyle("-fx-font-family: 'Courier New', monospace; -fx-text-fill: #64748B; -fx-font-weight: bold; -fx-font-size: 11px;");
+
+        // Totals
+        HBox subRow = new HBox();
+        Label subL = new Label("Subtotal:"); subL.setStyle("-fx-font-family: 'Courier New', monospace; -fx-font-size: 11px;");
+        Label subR = new Label("Rs 620.00"); subR.setStyle("-fx-font-family: 'Courier New', monospace; -fx-font-size: 11px;");
+        Region ssp = new Region(); HBox.setHgrow(ssp, Priority.ALWAYS);
+        subRow.getChildren().addAll(subL, ssp, subR);
+
+        HBox cgstRow = new HBox();
+        Label cgstL = new Label("CGST (2.5%):"); cgstL.setStyle("-fx-font-family: 'Courier New', monospace; -fx-font-size: 11px;");
+        Label cgstR = new Label("Rs 15.50");   cgstR.setStyle("-fx-font-family: 'Courier New', monospace; -fx-font-size: 11px;");
+        Region csp = new Region(); HBox.setHgrow(csp, Priority.ALWAYS);
+        cgstRow.getChildren().addAll(cgstL, csp, cgstR);
+
+        HBox sgstRow = new HBox();
+        Label sgstL = new Label("SGST (2.5%):"); sgstL.setStyle("-fx-font-family: 'Courier New', monospace; -fx-font-size: 11px;");
+        Label sgstR = new Label("Rs 15.50");   sgstR.setStyle("-fx-font-family: 'Courier New', monospace; -fx-font-size: 11px;");
+        Region gsp = new Region(); HBox.setHgrow(gsp, Priority.ALWAYS);
+        sgstRow.getChildren().addAll(sgstL, gsp, sgstR);
+
+        Label dash5 = new Label("----------------------------------------------");
+        dash5.setStyle("-fx-font-family: 'Courier New', monospace; -fx-text-fill: #64748B; -fx-font-weight: bold; -fx-font-size: 11px;");
+
+        // Grand Total
+        HBox grandRow = new HBox();
+        Label grandL = new Label("Grand Total:"); grandL.setStyle("-fx-font-family: 'Courier New', monospace; -fx-font-weight: 900; -fx-font-size: 13px;");
+        Label grandR = new Label("Rs 651.00");    grandR.setStyle("-fx-font-family: 'Courier New', monospace; -fx-font-weight: 900; -fx-font-size: 13px;");
+        Region gspTot = new Region(); HBox.setHgrow(gspTot, Priority.ALWAYS);
+        grandRow.getChildren().addAll(grandL, gspTot, grandR);
+
+        Label dash6 = new Label("----------------------------------------------");
+        dash6.setStyle("-fx-font-family: 'Courier New', monospace; -fx-text-fill: #64748B; -fx-font-weight: bold; -fx-font-size: 11px;");
+
+        // Footer Input
+        javafx.scene.control.TextField footerBillField = new javafx.scene.control.TextField(
+            bConfig.getFooterMessage() != null && !bConfig.getFooterMessage().isEmpty() ? bConfig.getFooterMessage() : "Thank you for dining!"
+        );
+        footerBillField.setPromptText("Thank you for dining!");
+        footerBillField.setStyle("-fx-font-size: 11px; -fx-alignment: center; -fx-background-color: #F8FAFC; -fx-border-color: #CBD5E1; -fx-border-radius: 4px; -fx-padding: 4;");
+
+        receiptPaperCard.getChildren().addAll(
+            restNameBillField, addressBillField, gstinRow, dash1,
+            metaRow1, metaRow2, dash2,
+            itemHeaderRow, dash3,
+            itmRow1, itmRow2, dash4,
+            subRow, cgstRow, sgstRow, dash5,
+            grandRow, dash6,
+            footerBillField
+        );
+
+        // Printer Paper Size Selector Row
+        HBox paperSizeRow = new HBox(10);
+        paperSizeRow.setAlignment(Pos.CENTER_LEFT);
+        paperSizeRow.setStyle("-fx-background-color: #FFFFFF; -fx-border-color: #E2E8F0; -fx-border-radius: 8px; -fx-background-radius: 8px; -fx-padding: 10 14;");
+        Label paperSizeLabel = new Label("Printer Paper Size:");
+        paperSizeLabel.setStyle("-fx-font-size: 12px; -fx-font-weight: bold; -fx-text-fill: #1E293B;");
+
+        javafx.scene.control.ComboBox<String> paperSizeCombo = new javafx.scene.control.ComboBox<>();
+        paperSizeCombo.getItems().addAll("80mm (3-Inch)", "58mm (2-Inch)");
+        paperSizeCombo.setValue("58mm".equalsIgnoreCase(bConfig.getPaperSize()) ? "58mm (2-Inch)" : "80mm (3-Inch)");
+        paperSizeCombo.setStyle("-fx-background-color: #F8FAFC; -fx-border-color: #CBD5E1; -fx-border-radius: 6px; -fx-background-radius: 6px; -fx-font-size: 12px;");
+        paperSizeRow.getChildren().addAll(paperSizeLabel, paperSizeCombo);
+        HBox.setHgrow(paperSizeCombo, Priority.ALWAYS);
+
+        VBox rightColumn = new VBox(12);
+        rightColumn.getChildren().addAll(paperSizeRow, receiptPaperCard, addonCard);
+        HBox.setHgrow(rightColumn, Priority.ALWAYS);
+
+        HBox twoColumnGrid = new HBox(16);
+        twoColumnGrid.getChildren().addAll(leftColumn, rightColumn);
+
+        mainContainer.getChildren().addAll(titleLabel, twoColumnGrid);
 
         javafx.scene.control.ScrollPane scrollPane = new javafx.scene.control.ScrollPane(mainContainer);
         scrollPane.setFitToWidth(true);
         scrollPane.setStyle("-fx-background-color: transparent; -fx-background: transparent;");
-        scrollPane.setPrefHeight(500);
+        scrollPane.setPrefHeight(580);
 
+        dialogPane.setPrefWidth(940);
+        dialogPane.setPrefHeight(680);
         dialogPane.setContent(scrollPane);
 
         dialog.showAndWait().ifPresent(btn -> {
@@ -8410,8 +8844,35 @@ public class UiDashboardController implements Initializable {
                     config.setCgstRate(cgst);
                     config.setSgstRate(sgst);
 
+                    // Save thermal receipt configuration
+                    bConfig.setRestaurantId(restaurantId);
+                    bConfig.setRestaurantName(restNameBillField.getText() != null ? restNameBillField.getText().trim() : "Surabhi Foods");
+                    bConfig.setAddressLine1(addressBillField.getText() != null ? addressBillField.getText().trim() : "");
+                    bConfig.setGstin(enableGstinCheck.isSelected() && gstinBillField.getText() != null ? gstinBillField.getText().trim() : "");
+                    bConfig.setShowTaxDetails(taxCheckBox.isSelected() && enableGstinCheck.isSelected());
+                    bConfig.setPaperSize(paperSizeCombo.getValue() != null && paperSizeCombo.getValue().contains("58mm") ? "58mm" : "80mm");
+                    bConfig.setFooterMessage(footerBillField.getText() != null ? footerBillField.getText().trim() : "Thank you for dining!");
+                    billingConfigRepository.save(bConfig);
+
                     restaurantSettingsRepository.saveAndFlush(settings);
                     systemConfigRepository.saveAndFlush(config);
+
+                    // Sync updated settings to disk JSON and cloud DB via activationService
+                    try {
+                        java.util.Map<String, Object> updatePayload = new java.util.HashMap<>();
+                        updatePayload.put("restaurantId", restaurantId.toString());
+                        updatePayload.put("cgstRate", cgst);
+                        updatePayload.put("sgstRate", sgst);
+                        updatePayload.put("taxEnabled", settings.isTaxEnabled());
+                        updatePayload.put("deliveryChargeEnabled", settings.isDeliveryChargeEnabled());
+                        updatePayload.put("defaultDeliveryFee", settings.getDefaultDeliveryFee());
+                        updatePayload.put("packingChargeEnabled", settings.isPackingChargeEnabled());
+                        updatePayload.put("defaultPackingFee", settings.getDefaultPackingFee());
+
+                        activationService.syncCloudConfiguration(updatePayload);
+                    } catch (Exception ex) {
+                        System.err.println("Notice: Settings persistence sync: " + ex.getMessage());
+                    }
 
                     if (enableDeliveryChargeCheckBox != null) {
                         enableDeliveryChargeCheckBox.setSelected(settings.isDeliveryChargeEnabled());

@@ -42,7 +42,7 @@ public class MdnsService {
                     // Standard TXT record property mapping for JmDNS
                     Map<String, String> properties = new HashMap<>();
                     properties.put("restaurantId", restaurantId.toString());
-                    properties.put("version", "1.0.0");
+                    properties.put("version", "1.0.4");
                     properties.put("serviceName", "SmartDine Biller");
 
                     serviceInfo = ServiceInfo.create(serviceType, serviceName, port, 0, 0, properties);

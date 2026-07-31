@@ -65,6 +65,13 @@ public class TunnelWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
+    public static boolean isTunnelActive(UUID restaurantId) {
+        if (activeTunnels.isEmpty()) return false;
+        if (restaurantId == null) return !activeTunnels.isEmpty();
+        WebSocketSession session = activeTunnels.get(restaurantId);
+        return session != null && session.isOpen();
+    }
+
     // Method called by Web Admin or Webhook controllers to push real-time updates down the tunnel
     public boolean sendConfigUpdate(UUID restaurantId, String updateType, Object payloadData) {
         WebSocketSession session = activeTunnels.get(restaurantId);

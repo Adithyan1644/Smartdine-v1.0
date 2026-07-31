@@ -80,9 +80,27 @@ public class ProvisioningController {
             }
         }
 
-        // ── Step 2: Look up restaurant by sync code in DB ──
-        Optional<Restaurant> restaurantOpt = restaurantRepository.findBySyncCodeAndIsDeletedFalse(code.trim());
+        // ── Step 2: Look up restaurant by sync code in DB (Dual-Pool Search) ──
+        com.smartdine.config.DataSourceContextHolder.set(com.smartdine.config.DataSourceContextHolder.PROD);
+        Optional<Restaurant> restaurantOpt = Optional.empty();
+        try {
+            restaurantOpt = restaurantRepository.findBySyncCodeAndIsDeletedFalse(code.trim());
+        } catch (Exception e) {
+            System.err.println("⚠️ [ProvisioningController] PROD lookup failed: " + e.getMessage());
+        }
+
+        // If not found in PROD, try DEV sandbox pool (smartdine_dev)
         if (!restaurantOpt.isPresent()) {
+            com.smartdine.config.DataSourceContextHolder.set(com.smartdine.config.DataSourceContextHolder.DEV);
+            try {
+                restaurantOpt = restaurantRepository.findBySyncCodeAndIsDeletedFalse(code.trim());
+            } catch (Exception e) {
+                System.err.println("⚠️ [ProvisioningController] DEV lookup failed: " + e.getMessage());
+            }
+        }
+
+        if (!restaurantOpt.isPresent()) {
+            com.smartdine.config.DataSourceContextHolder.clear();
             return ResponseEntity.badRequest().body(Map.of("error", "Invalid Sync Code: " + code));
         }
 
@@ -110,19 +128,23 @@ public class ProvisioningController {
         // ── Step 4: Load REAL waiters from DB (not hardcoded dummies) ──
         List<Map<String, String>> realWaiters = getLiveWaiters(restaurantId);
 
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("restaurantId", restaurantId.toString());
-        payload.put("restaurantName", restaurant.getName());
-        payload.put("cgstRate", new java.math.BigDecimal("2.50"));
-        payload.put("sgstRate", new java.math.BigDecimal("2.50"));
-        payload.put("serviceChargeRate", new java.math.BigDecimal("0.00"));
-        payload.put("tables", mappedTables);
-        payload.put("categories", mappedCategories);
-        payload.put("menuItems", Collections.emptyList());
-        payload.put("modifierGroups", Collections.emptyList());
-        payload.put("waiters", realWaiters);
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("restaurantId", restaurantId.toString());
+            payload.put("restaurantName", restaurant.getName());
+            payload.put("cgstRate", new java.math.BigDecimal("2.50"));
+            payload.put("sgstRate", new java.math.BigDecimal("2.50"));
+            payload.put("serviceChargeRate", new java.math.BigDecimal("0.00"));
+            payload.put("tables", mappedTables);
+            payload.put("categories", mappedCategories);
+            payload.put("menuItems", Collections.emptyList());
+            payload.put("modifierGroups", Collections.emptyList());
+            payload.put("waiters", realWaiters);
 
-        return ResponseEntity.ok(payload);
+            return ResponseEntity.ok(payload);
+        } finally {
+            com.smartdine.config.DataSourceContextHolder.clear();
+        }
     }
 
     /**

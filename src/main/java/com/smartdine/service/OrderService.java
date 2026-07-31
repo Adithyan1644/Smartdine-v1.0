@@ -50,7 +50,8 @@ public class OrderService {
         }
 
         // 2. Find or Create the Active Order session for this Table
-        Order order = orderRepository.findByRestaurantIdAndStatusNotIn(restaurantId, Arrays.asList(OrderStatus.PAID, OrderStatus.CANCELLED))
+        Order order = orderRepository
+                .findByRestaurantIdAndStatusNotIn(restaurantId, Arrays.asList(OrderStatus.PAID, OrderStatus.CANCELLED))
                 .stream()
                 .filter(o -> {
                     if (o.getTableId() != null && o.getTableId().equals(table.getId())) {
@@ -80,7 +81,8 @@ public class OrderService {
         BigDecimal kotSubtotal = BigDecimal.ZERO;
         List<KOTItem> kotItems = new ArrayList<>();
 
-        // 4. Validate items and lock current database prices (protects against client tampering)
+        // 4. Validate items and lock current database prices (protects against client
+        // tampering)
         for (KOTItemRequest itemReq : request.getItems()) {
             MenuItem menuItem = menuRepository.findById(itemReq.getMenuItemId())
                     .orElseGet(() -> {
@@ -101,7 +103,8 @@ public class OrderService {
                 menuItem.setRestaurantId(restaurantId);
                 try {
                     menuRepository.save(menuItem);
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
             }
 
             // Resolve modifiers
@@ -109,7 +112,8 @@ public class OrderService {
             BigDecimal globalModifiersPrice = BigDecimal.ZERO;
             List<String> modifierNames = new ArrayList<>();
             if (itemReq.getModifierOptionIds() != null && !itemReq.getModifierOptionIds().isEmpty()) {
-                List<ModifierOption> uniqueOptions = modifierOptionRepository.findAllById(itemReq.getModifierOptionIds());
+                List<ModifierOption> uniqueOptions = modifierOptionRepository
+                        .findAllById(itemReq.getModifierOptionIds());
                 Map<UUID, ModifierOption> optionMap = new HashMap<>();
                 for (ModifierOption opt : uniqueOptions) {
                     optionMap.put(opt.getId(), opt);
@@ -145,7 +149,7 @@ public class OrderService {
             kotItem.setItemName(menuItem.getName());
             kotItem.setQuantity(itemReq.getQuantity());
             kotItem.setSpecialInstruction(finalInstruction);
-            
+
             kotItems.add(kotItem);
 
             BigDecimal singleItemPriceWithModifiers = menuItem.getPrice().add(itemSpecificModifiersPrice);
@@ -160,23 +164,24 @@ public class OrderService {
         // 5. Update overall Order Financials & Taxes (CGST 2.5% + SGST 2.5%)
         updateOrderBilling(order, kotSubtotal);
 
-        // Ensure table status is in RUNNING state (e.g. if new items are added to an existing order)
+        // Ensure table status is in RUNNING state (e.g. if new items are added to an
+        // existing order)
         if (table.getStatus() != TableStatus.RUNNING) {
             table.setStatus(TableStatus.RUNNING);
             tableRepository.save(table);
         }
- 
+
         // 📢 6. REAL-TIME BROADCAST (WEB-SOCKET PUSH)
-        // Defer sending WebSocket notifications until AFTER transaction commits to prevent KDS REST API race condition
+        // Defer sending WebSocket notifications until AFTER transaction commits to
+        // prevent KDS REST API race condition
         if (org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) {
             org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
-                new org.springframework.transaction.support.TransactionSynchronization() {
-                    @Override
-                    public void afterCommit() {
-                        sendWebSocketNotifications(restaurantId, savedKot, table, order);
-                    }
-                }
-            );
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            sendWebSocketNotifications(restaurantId, savedKot, table, order);
+                        }
+                    });
         } else {
             sendWebSocketNotifications(restaurantId, savedKot, table, order);
         }
@@ -198,13 +203,14 @@ public class OrderService {
             tablePayload.put("status", table.getStatus().name());
             tablePayload.put("totalAmount", order.getGrandTotal() != null ? order.getGrandTotal().doubleValue() : 0.0);
             if (order.getStartedAt() != null) {
-                tablePayload.put("durationMinutes", (int) java.time.Duration.between(order.getStartedAt(), java.time.LocalDateTime.now()).toMinutes());
+                tablePayload.put("durationMinutes", (int) java.time.Duration
+                        .between(order.getStartedAt(), java.time.LocalDateTime.now()).toMinutes());
             } else {
                 tablePayload.put("durationMinutes", 0);
             }
             messagingTemplate.convertAndSend(tableTopic, tablePayload);
             System.out.println("📢 WebSocket Table Update Broadcast sent to topic: " + tableTopic);
-            
+
             // Publish local JVM event for JavaFX UI
             eventPublisher.publishEvent(new com.smartdine.coreheart.TableUpdateEvent(this));
         } catch (Exception e) {
@@ -227,7 +233,7 @@ public class OrderService {
         order.setType(OrderType.DINE_IN);
         order.setSource("DIRECT");
         order.setCustomerName("Guest Table " + table.getTableNumber());
-        
+
         if (notes != null && !notes.trim().isEmpty()) {
             order.setNotes(notes);
             order.setCustomerName(notes); // Store notes as session context for compatibility
@@ -292,16 +298,18 @@ public class OrderService {
         order.setRestaurantId(restaurantId);
         order.setOrderNumber("#" + (System.currentTimeMillis() % 10000));
         order.setTableId(tables.get(0).getId()); // Primary anchor table
-        
+
         // Dynamic name: e.g. MERGE 1, MERGE 2...
-        List<Order> activeOrders = orderRepository.findByRestaurantIdAndStatusNotIn(restaurantId, java.util.Arrays.asList(OrderStatus.PAID, OrderStatus.CANCELLED));
+        List<Order> activeOrders = orderRepository.findByRestaurantIdAndStatusNotIn(restaurantId,
+                java.util.Arrays.asList(OrderStatus.PAID, OrderStatus.CANCELLED));
         java.util.Set<Integer> activeMergeNums = new java.util.HashSet<>();
         for (Order o : activeOrders) {
             if (o.getTableName() != null && o.getTableName().startsWith("MERGE ")) {
                 try {
                     int num = Integer.parseInt(o.getTableName().substring(6).trim());
                     activeMergeNums.add(num);
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
             }
         }
         int nextMergeNum = 1;
@@ -323,13 +331,12 @@ public class OrderService {
         // Defer WebSocket broadcasts until AFTER transaction commits
         if (org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) {
             org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
-                new org.springframework.transaction.support.TransactionSynchronization() {
-                    @Override
-                    public void afterCommit() {
-                        broadcastMergedTablesUpdate(restaurantId, tables, savedOrder);
-                    }
-                }
-            );
+                    new org.springframework.transaction.support.TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            broadcastMergedTablesUpdate(restaurantId, tables, savedOrder);
+                        }
+                    });
         } else {
             broadcastMergedTablesUpdate(restaurantId, tables, savedOrder);
         }
@@ -389,7 +396,8 @@ public class OrderService {
 
         updateOrderBilling(order, deduction.negate());
 
-        // 4. Update overall status of the KOT. If all items are CANCELLED, set overallStatus to CANCELLED.
+        // 4. Update overall status of the KOT. If all items are CANCELLED, set
+        // overallStatus to CANCELLED.
         boolean allCancelled = true;
         for (KOTItem item : kot.getItems()) {
             if (item.getItemStatus() != KOTStatus.CANCELLED) {
@@ -404,20 +412,20 @@ public class OrderService {
         KOT savedKot = kotRepository.save(kot);
 
         // 5. If all items in all KOTs for this order are cancelled, vacant the table
-        // We will keep table running to let waiter settle manually, or if order subtotal is <= 0
+        // We will keep table running to let waiter settle manually, or if order
+        // subtotal is <= 0
         DiningTable table = tableRepository.findById(kot.getTableId()).orElse(null);
 
         // 📢 6. REAL-TIME BROADCAST (WEB-SOCKET PUSH)
         if (table != null) {
             if (org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) {
                 org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
-                    new org.springframework.transaction.support.TransactionSynchronization() {
-                        @Override
-                        public void afterCommit() {
-                            sendWebSocketNotifications(restaurantId, savedKot, table, order);
-                        }
-                    }
-                );
+                        new org.springframework.transaction.support.TransactionSynchronization() {
+                            @Override
+                            public void afterCommit() {
+                                sendWebSocketNotifications(restaurantId, savedKot, table, order);
+                            }
+                        });
             } else {
                 sendWebSocketNotifications(restaurantId, savedKot, table, order);
             }
@@ -475,13 +483,12 @@ public class OrderService {
             Order order = orderRepository.findById(kot.getOrderId()).orElse(null);
             if (org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) {
                 org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
-                    new org.springframework.transaction.support.TransactionSynchronization() {
-                        @Override
-                        public void afterCommit() {
-                            sendWebSocketNotifications(restaurantId, savedKot, table, order);
-                        }
-                    }
-                );
+                        new org.springframework.transaction.support.TransactionSynchronization() {
+                            @Override
+                            public void afterCommit() {
+                                sendWebSocketNotifications(restaurantId, savedKot, table, order);
+                            }
+                        });
             } else {
                 sendWebSocketNotifications(restaurantId, savedKot, table, order);
             }
@@ -515,7 +522,8 @@ public class OrderService {
 
                 MenuItem menuItem = menuRepository.findById(item.getMenuItemId()).orElse(null);
                 if (menuItem != null) {
-                    totalDeduction = totalDeduction.add(menuItem.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())));
+                    totalDeduction = totalDeduction
+                            .add(menuItem.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())));
                 }
             }
         }
@@ -536,13 +544,12 @@ public class OrderService {
         if (table != null) {
             if (org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()) {
                 org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
-                    new org.springframework.transaction.support.TransactionSynchronization() {
-                        @Override
-                        public void afterCommit() {
-                            sendWebSocketNotifications(restaurantId, savedKot, table, order);
-                        }
-                    }
-                );
+                        new org.springframework.transaction.support.TransactionSynchronization() {
+                            @Override
+                            public void afterCommit() {
+                                sendWebSocketNotifications(restaurantId, savedKot, table, order);
+                            }
+                        });
             } else {
                 sendWebSocketNotifications(restaurantId, savedKot, table, order);
             }
@@ -551,8 +558,6 @@ public class OrderService {
         return savedKot;
     }
 
-
-
     private void broadcastMergedTablesUpdate(UUID restaurantId, List<DiningTable> tables, Order order) {
         try {
             String tableTopic = "/topic/tables/" + restaurantId;
@@ -560,9 +565,11 @@ public class OrderService {
                 Map<String, Object> tablePayload = new HashMap<>();
                 tablePayload.put("id", table.getId().toString());
                 tablePayload.put("status", table.getStatus().name());
-                tablePayload.put("totalAmount", order.getGrandTotal() != null ? order.getGrandTotal().doubleValue() : 0.0);
+                tablePayload.put("totalAmount",
+                        order.getGrandTotal() != null ? order.getGrandTotal().doubleValue() : 0.0);
                 if (order.getStartedAt() != null) {
-                    tablePayload.put("durationMinutes", (int) java.time.Duration.between(order.getStartedAt(), java.time.LocalDateTime.now()).toMinutes());
+                    tablePayload.put("durationMinutes", (int) java.time.Duration
+                            .between(order.getStartedAt(), java.time.LocalDateTime.now()).toMinutes());
                 } else {
                     tablePayload.put("durationMinutes", 0);
                 }
@@ -583,7 +590,8 @@ public class OrderService {
 
         // Broadcast notification if restaurantId present
         try {
-            UUID restaurantId = savedOrder.getRestaurantId() != null ? savedOrder.getRestaurantId() : TenantContext.getRestaurantId();
+            UUID restaurantId = savedOrder.getRestaurantId() != null ? savedOrder.getRestaurantId()
+                    : TenantContext.getRestaurantId();
             if (restaurantId != null && messagingTemplate != null) {
                 Map<String, Object> payload = new HashMap<>();
                 payload.put("type", "ORDER_PRIORITY_UPDATED");

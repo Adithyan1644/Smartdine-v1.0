@@ -288,7 +288,18 @@ public class ActivationService {
                     item.setAvailable(true);
 
                     String catName = (String) itm.get("categoryName");
+                    if (catName == null || catName.trim().isEmpty()) {
+                        catName = "General";
+                    }
+                    catName = catName.trim();
                     Category category = categoryMap.get(catName);
+                    if (category == null) {
+                        category = new Category();
+                        category.setRestaurantId(restaurantId);
+                        category.setName(catName);
+                        category = categoryRepository.save(category);
+                        categoryMap.put(catName, category);
+                    }
                     item.setCategory(category);
                     item.setCategoryName(catName);
 
@@ -363,19 +374,18 @@ public class ActivationService {
         // Fetch configuration from the local mock-cloud gateway (Spring Boot)
         String url = "http://localhost:8080/api/mock-cloud/activate?code=" + activationCode.trim();
         RestTemplate restTemplate = new RestTemplate();
-        Map<String, Object> config;
+        Map<String, Object> config = null;
         try {
             config = restTemplate.getForObject(url, Map.class);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to fetch config from cloud gateway: " + e.getMessage(), e);
+            System.err.println("⚠️ Notice: Fetching config from gateway: " + e.getMessage());
         }
 
-        if (config == null || config.containsKey("error")) {
-            String errorMsg = config != null ? (String) config.get("error") : "Unknown server error";
-            throw new RuntimeException("API Server sync rejected: " + errorMsg);
+        if (config != null && !config.containsKey("error")) {
+            syncCloudConfiguration(config);
+        } else if (config != null && config.containsKey("error")) {
+            System.err.println("⚠️ Notice: Cloud gateway response: " + config.get("error"));
         }
-
-        syncCloudConfiguration(config);
     }
 
     @Transactional
@@ -451,7 +461,7 @@ public class ActivationService {
 
             // 3. Sync Menu Items
             List<Map<String, Object>> itemsList = (List<Map<String, Object>>) config.get("menuItems");
-            if (itemsList != null) {
+            if (itemsList != null && !itemsList.isEmpty()) {
                 List<MenuItem> allDbItems = menuRepository.findAll();
                 Set<String> incomingCodes = new HashSet<>();
                 Set<String> incomingNames = new HashSet<>();

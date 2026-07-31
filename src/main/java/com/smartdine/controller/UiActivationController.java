@@ -78,9 +78,9 @@ public class UiActivationController {
 
     @FXML
     public void initialize() {
-        // Set default gateway URL to local Spring Boot endpoint
+        // Set default gateway URL to GCP App Engine production endpoint
         if (gatewayUrlField != null) {
-            gatewayUrlField.setText("http://localhost:8080/api/public/provision");
+            gatewayUrlField.setText("https://smartdine-saas.ew.r.appspot.com/api/public/provision");
         }
 
         // Apply numeric filter & max length limit (4 digits) for POS PIN
@@ -107,7 +107,7 @@ public class UiActivationController {
         }
 
         if (gatewayUrl == null || gatewayUrl.trim().isEmpty()) {
-            gatewayUrl = "http://localhost:8080/api/public/provision";
+            gatewayUrl = "https://smartdine-saas.ew.r.appspot.com/api/public/provision";
         }
 
         final String finalCode = code.trim();
@@ -208,7 +208,7 @@ public class UiActivationController {
 
                         Scene scene = new Scene(root);
                         stage.setScene(scene);
-                        stage.setTitle("SMARTDINE Login");
+                        stage.setTitle("Surabhi SmartDine Login");
                         stage.show();
                     } catch (Exception e) {
                         completeBtn.setDisable(false);

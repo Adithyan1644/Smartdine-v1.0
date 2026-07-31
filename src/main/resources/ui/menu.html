@@ -365,15 +365,13 @@ let menuItems = [];
 
 // Initialize database with javaApp bridge or local storage fallback
 function initDatabase() {
-  // Clear any old mock local storage data
-  if (localStorage.getItem("surabhi_menu_items") && localStorage.getItem("surabhi_menu_items").includes("Masala Papad")) {
-    localStorage.removeItem("surabhi_menu_items");
-  }
-
   if (window.javaApp) {
     try {
-      menuItems = JSON.parse(window.javaApp.getMenuItemsJson());
-      return;
+      const jsonStr = window.javaApp.getMenuItemsJson();
+      if (jsonStr) {
+        menuItems = JSON.parse(jsonStr);
+        return;
+      }
     } catch (e) {
       console.error("Failed to fetch menu items from javaApp:", e);
     }
@@ -384,13 +382,25 @@ function initDatabase() {
       menuItems = JSON.parse(stored);
     } else {
       menuItems = [...defaultItems];
-      localStorage.setItem("surabhi_menu_items", JSON.stringify(menuItems));
     }
   } catch (e) {
-    console.warn("localStorage not available, falling back to memory database.", e);
     menuItems = [...defaultItems];
   }
 }
+
+// Auto-poll for javaApp registration if page loaded before javaApp injection
+let _bridgePollCount = 0;
+const _bridgeInterval = setInterval(() => {
+  _bridgePollCount++;
+  if (window.javaApp) {
+    initDatabase();
+    populateCategories();
+    updateStats();
+    renderTable();
+    if (_bridgePollCount > 5) clearInterval(_bridgeInterval);
+  }
+  if (_bridgePollCount > 20) clearInterval(_bridgeInterval);
+}, 500);
 
 // Save database and dispatch update event with sandbox try-catch
 function saveDatabase() {
@@ -403,9 +413,49 @@ function saveDatabase() {
   window.dispatchEvent(new Event('storage'));
 }
 
+// Dynamically build category dropdowns from database & website items
+function populateCategories() {
+  const filterSelect = document.getElementById("category-filter");
+  const formSelect = document.getElementById("form-category");
+  if (!filterSelect || !formSelect) return;
+
+  const currentFilterVal = filterSelect.value || "ALL";
+  const currentFormVal = formSelect.value || "Starters";
+
+  const catSet = new Set(["Starters", "Main Course", "Breads", "Beverages", "Desserts", "Rice & Biryani", "Sides"]);
+  menuItems.forEach(i => {
+    if (i.category && i.category.trim()) {
+      catSet.add(i.category.trim());
+    }
+  });
+
+  const sortedCats = Array.from(catSet).sort();
+
+  filterSelect.innerHTML = '<option value="ALL">All Categories</option>';
+  sortedCats.forEach(cat => {
+    const opt = document.createElement("option");
+    opt.value = cat;
+    opt.textContent = cat;
+    filterSelect.appendChild(opt);
+  });
+  filterSelect.value = currentFilterVal;
+
+  formSelect.innerHTML = "";
+  sortedCats.forEach(cat => {
+    const opt = document.createElement("option");
+    opt.value = cat;
+    opt.textContent = cat;
+    formSelect.appendChild(opt);
+  });
+  if (currentFormVal && sortedCats.includes(currentFormVal)) {
+    formSelect.value = currentFormVal;
+  }
+}
+
 // Load and render
 function refreshUI() {
   initDatabase();
+  populateCategories();
   updateStats();
   renderTable();
 }

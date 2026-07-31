@@ -26,6 +26,9 @@ public class Restaurant extends BaseEntity {
     @Column(name = "is_active", nullable = false)
     private boolean isActive = true;
 
+    @Column(name = "is_test", nullable = false)
+    private boolean isTest = false;
+
     @Column(name = "active_local_ip")
     private String activeLocalIp;
 
@@ -76,6 +79,14 @@ public class Restaurant extends BaseEntity {
 
     public void setActive(boolean active) {
         isActive = active;
+    }
+
+    public boolean isTest() {
+        return isTest;
+    }
+
+    public void setTest(boolean isTest) {
+        this.isTest = isTest;
     }
 
     public String getActiveLocalIp() {

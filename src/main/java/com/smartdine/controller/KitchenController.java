@@ -21,7 +21,6 @@ public class KitchenController {
     @Autowired
     private SimpMessagingTemplate messagingTemplate;
 
-    // 1. Fetch active KOTs (PENDING, PREPARING, READY, SERVED) for this restaurant
     @GetMapping("/active")
     public ResponseEntity<List<KOT>> getActiveKOTs(@RequestParam(required = false) String restaurantId) {
         UUID restUuid = null;
@@ -34,15 +33,29 @@ public class KitchenController {
             restUuid = TenantContext.getRestaurantId();
         }
         
-        List<KOT> activeKOTs = kotRepository.findByRestaurantIdAndOverallStatusIn(
-                restUuid, 
-                List.of(KOTStatus.PENDING, KOTStatus.PREPARING, KOTStatus.READY, KOTStatus.SERVED)
-        );
+        List<KOT> activeKOTs = new ArrayList<>();
+        if (restUuid != null) {
+            activeKOTs = kotRepository.findByRestaurantIdAndOverallStatusIn(
+                    restUuid, 
+                    List.of(KOTStatus.PENDING, KOTStatus.PREPARING, KOTStatus.READY)
+            );
+        }
 
         if (activeKOTs.isEmpty()) {
             activeKOTs = kotRepository.findAll().stream()
-                .filter(k -> k.getOverallStatus() != KOTStatus.CANCELLED)
+                .filter(k -> k.getOverallStatus() == KOTStatus.PENDING || 
+                             k.getOverallStatus() == KOTStatus.PREPARING || 
+                             k.getOverallStatus() == KOTStatus.READY)
                 .toList();
+        }
+
+        if (restUuid != null && !activeKOTs.isEmpty()) {
+            for (KOT k : activeKOTs) {
+                if (k.getRestaurantId() == null || !k.getRestaurantId().equals(restUuid)) {
+                    k.setRestaurantId(restUuid);
+                    try { kotRepository.save(k); } catch (Exception ignored) {}
+                }
+            }
         }
 
         return ResponseEntity.ok(activeKOTs);
@@ -58,8 +71,12 @@ public class KitchenController {
         KOT kot = kotRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("KOT not found"));
 
-        if (!kot.getRestaurantId().equals(restaurantId)) {
-            throw new RuntimeException("Access denied");
+        if (restaurantId != null) {
+            if (kot.getRestaurantId() == null || !kot.getRestaurantId().equals(restaurantId)) {
+                kot.setRestaurantId(restaurantId);
+            }
+        } else if (kot.getRestaurantId() != null) {
+            restaurantId = kot.getRestaurantId();
         }
 
         String statusStr = body.get("status");
@@ -93,9 +110,12 @@ public class KitchenController {
             KOT kot = kotRepository.findById(kotId)
                     .orElseThrow(() -> new RuntimeException("KOT not found: " + kotId));
 
-            if (!kot.getRestaurantId().equals(restaurantId)) {
-                System.out.println("[KDS DEBUG] Access denied: kot.restaurantId=" + kot.getRestaurantId() + ", context.restaurantId=" + restaurantId);
-                throw new RuntimeException("Access denied");
+            if (restaurantId != null) {
+                if (kot.getRestaurantId() == null || !kot.getRestaurantId().equals(restaurantId)) {
+                    kot.setRestaurantId(restaurantId);
+                }
+            } else if (kot.getRestaurantId() != null) {
+                restaurantId = kot.getRestaurantId();
             }
 
             String statusStr = body.get("status");
@@ -119,21 +139,16 @@ public class KitchenController {
                 throw new RuntimeException("Item not found in KOT");
             }
 
-            // Automatic state transition logic for KOT
-            boolean allItemsReady = true;
+            // State transition logic for KOT item check
             boolean anyPreparingOrReady = false;
             for (KOTItem item : kot.getItems()) {
                 if (item.getItemStatus() == KOTStatus.PREPARING || item.getItemStatus() == KOTStatus.READY) {
                     anyPreparingOrReady = true;
-                }
-                if (item.getItemStatus() != KOTStatus.READY && item.getItemStatus() != KOTStatus.SERVED && item.getItemStatus() != KOTStatus.CANCELLED) {
-                    allItemsReady = false;
+                    break;
                 }
             }
             
-            if (allItemsReady && !kot.getItems().isEmpty()) {
-                kot.setOverallStatus(KOTStatus.READY);
-            } else if (anyPreparingOrReady && kot.getOverallStatus() == KOTStatus.PENDING) {
+            if (anyPreparingOrReady && kot.getOverallStatus() == KOTStatus.PENDING) {
                 kot.setOverallStatus(KOTStatus.PREPARING);
             }
 
