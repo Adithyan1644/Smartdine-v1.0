@@ -30,8 +30,23 @@ public class AuthController {
     private com.smartdine.repository.SystemConfigRepository systemConfigRepository;
 
     @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@RequestBody LoginRequest request) {
-        return ResponseEntity.ok(authService.authenticateUser(request));
+    public ResponseEntity<?> login(@RequestBody LoginRequest request) {
+        try {
+            DataSourceContextHolder.set(DataSourceContextHolder.PROD);
+            AuthResponse response = authService.authenticateUser(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception prodEx) {
+            try {
+                DataSourceContextHolder.set(DataSourceContextHolder.DEV);
+                AuthResponse response = authService.authenticateUser(request);
+                return ResponseEntity.ok(response);
+            } catch (Exception devEx) {
+                String msg = prodEx.getMessage() != null ? prodEx.getMessage() : "Invalid Credentials";
+                return ResponseEntity.badRequest().body(Map.of("status", "failed", "error", msg));
+            }
+        } finally {
+            DataSourceContextHolder.clear();
+        }
     }
 
     @PostMapping("/register")
