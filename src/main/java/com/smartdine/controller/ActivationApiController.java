@@ -50,19 +50,25 @@ public class ActivationApiController {
     @Autowired
     private ProvisioningController provisioningController;
 
-    @RequestMapping(value = "/reset-all-accounts", method = { RequestMethod.GET, RequestMethod.POST })
+    @org.springframework.transaction.annotation.Transactional
+    @RequestMapping(value = { "/reset-all-accounts", "/api/reset-all-accounts" }, method = { RequestMethod.GET, RequestMethod.POST })
     public ResponseEntity<?> resetAllAccounts() {
         try {
-            kotRepository.deleteAll();
-            orderRepository.deleteAll();
-            customerRepository.deleteAll();
-            menuRepository.deleteAll();
-            addonItemRepository.deleteAll();
-            categoryRepository.deleteAll();
-            tableRepository.deleteAll();
-            userRepository.deleteAll();
-            systemConfigRepository.deleteAll();
-            restaurantRepository.deleteAll();
+            try {
+                jdbcTemplate.execute("TRUNCATE TABLE kot_items, kots, order_items, orders, customers, menu_items, modifier_options, modifier_groups, categories, dining_tables, app_users, system_configs, restaurants CASCADE");
+            } catch (Exception nativeErr) {
+                System.out.println("[ActivationApiController] Native truncate warning: " + nativeErr.getMessage());
+                kotRepository.deleteAllInBatch();
+                orderRepository.deleteAllInBatch();
+                customerRepository.deleteAllInBatch();
+                menuRepository.deleteAllInBatch();
+                addonItemRepository.deleteAllInBatch();
+                categoryRepository.deleteAllInBatch();
+                tableRepository.deleteAllInBatch();
+                userRepository.deleteAllInBatch();
+                systemConfigRepository.deleteAllInBatch();
+                restaurantRepository.deleteAllInBatch();
+            }
 
             // Delete all activation JSON files locally and in C:/SmartDine/
             java.util.List<java.io.File> dirs = java.util.List.of(
