@@ -40,44 +40,58 @@ public class AuthService {
     @Autowired
     private CloudDatabaseSeederService cloudDatabaseSeederService;
 
-    // Professional Multi-Credential Login for Admin/Setup
+    // Professional Multi-Credential Login for Admin/Setup (User ID, Phone Number, Restaurant Name, Email, Sync Code)
     public AuthResponse authenticateUser(LoginRequest request) {
         if (request == null || request.getUsername() == null) {
-            throw new RuntimeException("Restaurant Name, Username, or Sync Code is required");
+            throw new RuntimeException("User ID, Phone Number, Restaurant Name, or Sync Code is required");
         }
 
-        String targetUsername = request.getUsername().trim();
+        String targetCred = request.getUsername().trim();
         String rawPassword = request.getPassword() != null ? request.getPassword().trim() : "";
 
         // 1. Try lookup by exact username / email
-        AppUser user = userRepository.findByUsernameIgnoreCase(targetUsername).orElse(null);
+        AppUser user = userRepository.findByUsernameIgnoreCase(targetCred).orElse(null);
 
-        // 2. Try lookup by Restaurant Name
-        if (user == null) {
-            var restOpt = restaurantRepository.findByNameIgnoreCase(targetUsername);
-            if (restOpt.isPresent() && restOpt.get().getRestaurantId() != null) {
-                user = userRepository.findByRestaurantIdAndRole(restOpt.get().getRestaurantId(), UserRole.ADMIN)
-                        .stream().findFirst()
-                        .orElseGet(() -> userRepository.findByRestaurantId(restOpt.get().getRestaurantId()).stream().findFirst().orElse(null));
-            }
-        }
-
-        // 3. Try lookup by Sync Code (e.g. SD-577226)
-        if (user == null) {
-            var restOpt = restaurantRepository.findBySyncCodeAndIsDeletedFalse(targetUsername);
-            if (restOpt.isPresent() && restOpt.get().getRestaurantId() != null) {
-                user = userRepository.findByRestaurantIdAndRole(restOpt.get().getRestaurantId(), UserRole.ADMIN)
-                        .stream().findFirst()
-                        .orElseGet(() -> userRepository.findByRestaurantId(restOpt.get().getRestaurantId()).stream().findFirst().orElse(null));
-            }
-        }
-
-        // 4. Fallback search across all users
+        // 2. Try lookup by Phone Number
         if (user == null) {
             user = userRepository.findAll().stream()
-                    .filter(u -> u.getUsername() != null && u.getUsername().trim().equalsIgnoreCase(targetUsername))
+                    .filter(u -> u.getPhone() != null && u.getPhone().trim().equalsIgnoreCase(targetCred))
+                    .findFirst().orElse(null);
+        }
+
+        // 3. Try lookup by Restaurant Name
+        if (user == null) {
+            var restOpt = restaurantRepository.findByNameIgnoreCase(targetCred);
+            if (restOpt.isPresent() && restOpt.get().getRestaurantId() != null) {
+                user = userRepository.findByRestaurantIdAndRole(restOpt.get().getRestaurantId(), UserRole.ADMIN)
+                        .stream().findFirst()
+                        .orElseGet(() -> userRepository.findByRestaurantId(restOpt.get().getRestaurantId()).stream().findFirst().orElse(null));
+            }
+        }
+
+        // 4. Try lookup by Sync Code (e.g. SD-620495 or 620495)
+        if (user == null) {
+            String candidateCode = targetCred.toUpperCase();
+            if (!candidateCode.startsWith("SD-") && candidateCode.matches("\\d{6}")) {
+                candidateCode = "SD-" + candidateCode;
+            }
+            String finalCode = candidateCode;
+            var restOpt = restaurantRepository.findBySyncCodeAndIsDeletedFalse(finalCode)
+                    .or(() -> restaurantRepository.findByBillerSyncCode(finalCode));
+            if (restOpt.isPresent() && restOpt.get().getRestaurantId() != null) {
+                user = userRepository.findByRestaurantIdAndRole(restOpt.get().getRestaurantId(), UserRole.ADMIN)
+                        .stream().findFirst()
+                        .orElseGet(() -> userRepository.findByRestaurantId(restOpt.get().getRestaurantId()).stream().findFirst().orElse(null));
+            }
+        }
+
+        // 5. Fallback search across all users
+        if (user == null) {
+            user = userRepository.findAll().stream()
+                    .filter(u -> (u.getUsername() != null && u.getUsername().trim().equalsIgnoreCase(targetCred)) ||
+                                 (u.getPhone() != null && u.getPhone().trim().equalsIgnoreCase(targetCred)))
                     .findFirst()
-                    .orElseThrow(() -> new RuntimeException("Restaurant Name or Username not registered"));
+                    .orElseThrow(() -> new RuntimeException("Account not found. Please check your User ID, Phone Number, Restaurant Name, or Sync Code."));
         }
 
         boolean matchesBcrypt = user.getPassword() != null && passwordEncoder.matches(rawPassword, user.getPassword());
@@ -89,10 +103,23 @@ public class AuthService {
                 userRepository.save(user);
             }
 
+            String restName = "";
+            String syncCode = "";
+            if (user.getRestaurantId() != null) {
+                var r = restaurantRepository.findByRestaurantId(user.getRestaurantId()).orElse(null);
+                if (r != null) {
+                    restName = r.getName();
+                    syncCode = r.getBillerSyncCode() != null ? r.getBillerSyncCode() : r.getSyncCode();
+                }
+            }
+
             String token = jwtUtil.generateToken(user.getUsername(), user.getRole().name(), user.getRestaurantId());
-            return new AuthResponse(token, user.getRole().name(), user.getRestaurantId(), user.getFullName());
+            AuthResponse response = new AuthResponse(token, user.getRole().name(), user.getRestaurantId(), user.getFullName());
+            response.setRestaurantName(restName);
+            response.setSyncCode(syncCode);
+            return response;
         } else {
-            throw new RuntimeException("Incorrect password. Please try again.");
+            throw new RuntimeException("Incorrect Password. Please try again.");
         }
     }
 

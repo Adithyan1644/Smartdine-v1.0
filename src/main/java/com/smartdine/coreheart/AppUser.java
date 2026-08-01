@@ -28,6 +28,9 @@ public class AppUser extends BaseEntity {
     @Column(length = 4)
     private String pin; // 4-digit PIN for staff login
 
+    @Column(name = "phone")
+    private String phone;
+
     // Constructors
     public AppUser() {}
 
@@ -87,5 +90,13 @@ public class AppUser extends BaseEntity {
 
     public void setPin(String pin) {
         this.pin = pin;
+    }
+
+    public String getPhone() {
+        return phone;
+    }
+
+    public void setPhone(String phone) {
+        this.phone = phone;
     }
 }

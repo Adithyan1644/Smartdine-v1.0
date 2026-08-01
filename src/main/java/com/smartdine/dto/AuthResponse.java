@@ -7,6 +7,8 @@ public class AuthResponse {
     private String role;
     private UUID restaurantId;
     private String fullName;
+    private String restaurantName;
+    private String syncCode;
 
     // Constructors
     public AuthResponse() {}
@@ -49,5 +51,21 @@ public class AuthResponse {
 
     public void setFullName(String fullName) {
         this.fullName = fullName;
+    }
+
+    public String getRestaurantName() {
+        return restaurantName;
+    }
+
+    public void setRestaurantName(String restaurantName) {
+        this.restaurantName = restaurantName;
+    }
+
+    public String getSyncCode() {
+        return syncCode;
+    }
+
+    public void setSyncCode(String syncCode) {
+        this.syncCode = syncCode;
     }
 }
