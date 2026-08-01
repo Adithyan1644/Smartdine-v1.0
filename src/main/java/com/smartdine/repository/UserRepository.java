@@ -23,4 +23,7 @@ public interface UserRepository extends JpaRepository<AppUser, UUID> {
 
     // Fetch all staff list regardless of active state
     java.util.List<AppUser> findByRestaurantIdAndRole(UUID restaurantId, com.smartdine.coreheart.UserRole role);
+
+    // Fetch all users belonging to a specific restaurant ID
+    java.util.List<AppUser> findByRestaurantId(UUID restaurantId);
 }

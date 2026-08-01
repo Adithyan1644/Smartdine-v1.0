@@ -40,21 +40,46 @@ public class AuthService {
     @Autowired
     private CloudDatabaseSeederService cloudDatabaseSeederService;
 
-    // Professional Login for Admin/Setup
+    // Professional Multi-Credential Login for Admin/Setup
     public AuthResponse authenticateUser(LoginRequest request) {
         if (request == null || request.getUsername() == null) {
-            throw new RuntimeException("Invalid Username");
+            throw new RuntimeException("Restaurant Name, Username, or Sync Code is required");
         }
 
         String targetUsername = request.getUsername().trim();
         String rawPassword = request.getPassword() != null ? request.getPassword().trim() : "";
 
-        AppUser user = userRepository.findByUsernameIgnoreCase(targetUsername)
-                .orElseGet(() -> userRepository.findAll().stream()
-                        .filter(u -> u.getUsername() != null && u.getUsername().trim().equalsIgnoreCase(targetUsername))
-                        .findFirst()
-                        .orElseThrow(() -> new RuntimeException("Invalid Username")));
-        
+        // 1. Try lookup by exact username / email
+        AppUser user = userRepository.findByUsernameIgnoreCase(targetUsername).orElse(null);
+
+        // 2. Try lookup by Restaurant Name
+        if (user == null) {
+            var restOpt = restaurantRepository.findByNameIgnoreCase(targetUsername);
+            if (restOpt.isPresent() && restOpt.get().getRestaurantId() != null) {
+                user = userRepository.findByRestaurantIdAndRole(restOpt.get().getRestaurantId(), UserRole.ADMIN)
+                        .stream().findFirst()
+                        .orElseGet(() -> userRepository.findByRestaurantId(restOpt.get().getRestaurantId()).stream().findFirst().orElse(null));
+            }
+        }
+
+        // 3. Try lookup by Sync Code (e.g. SD-577226)
+        if (user == null) {
+            var restOpt = restaurantRepository.findBySyncCodeAndIsDeletedFalse(targetUsername);
+            if (restOpt.isPresent() && restOpt.get().getRestaurantId() != null) {
+                user = userRepository.findByRestaurantIdAndRole(restOpt.get().getRestaurantId(), UserRole.ADMIN)
+                        .stream().findFirst()
+                        .orElseGet(() -> userRepository.findByRestaurantId(restOpt.get().getRestaurantId()).stream().findFirst().orElse(null));
+            }
+        }
+
+        // 4. Fallback search across all users
+        if (user == null) {
+            user = userRepository.findAll().stream()
+                    .filter(u -> u.getUsername() != null && u.getUsername().trim().equalsIgnoreCase(targetUsername))
+                    .findFirst()
+                    .orElseThrow(() -> new RuntimeException("Restaurant Name or Username not registered"));
+        }
+
         boolean matchesBcrypt = user.getPassword() != null && passwordEncoder.matches(rawPassword, user.getPassword());
         boolean matchesPlaintext = user.getPassword() != null && rawPassword.equals(user.getPassword().trim());
 
@@ -67,7 +92,7 @@ public class AuthService {
             String token = jwtUtil.generateToken(user.getUsername(), user.getRole().name(), user.getRestaurantId());
             return new AuthResponse(token, user.getRole().name(), user.getRestaurantId(), user.getFullName());
         } else {
-            throw new RuntimeException("Invalid Password");
+            throw new RuntimeException("Incorrect password. Please try again.");
         }
     }
 

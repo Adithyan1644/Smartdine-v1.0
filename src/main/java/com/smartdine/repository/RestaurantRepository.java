@@ -12,4 +12,5 @@ public interface RestaurantRepository extends JpaRepository<Restaurant, UUID> {
     Optional<Restaurant> findByWaiterSyncCode(String waiterSyncCode);
     Optional<Restaurant> findByBillerSyncCode(String billerSyncCode);
     Optional<Restaurant> findByRestaurantId(UUID restaurantId);
+    Optional<Restaurant> findByNameIgnoreCase(String name);
 }
