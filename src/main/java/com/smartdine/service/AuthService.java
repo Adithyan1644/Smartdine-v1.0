@@ -29,6 +29,9 @@ public class AuthService {
     private CategoryRepository categoryRepository;
 
     @Autowired
+    private MenuRepository menuRepository;
+
+    @Autowired
     private PasswordEncoder passwordEncoder;
 
     @Autowired
@@ -167,6 +170,103 @@ public class AuthService {
                 .orElseThrow(() -> new RuntimeException("Waiter not found with id: " + waiterId));
         waiter.setActive(active);
         userRepository.save(waiter);
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public java.util.Map<String, Object> registerNewTenant(com.smartdine.dto.OnboardingRequest request) {
+        if (request == null || request.getRestaurantName() == null) {
+            throw new RuntimeException("Restaurant name is required");
+        }
+
+        String restaurantName = request.getRestaurantName().trim();
+        String ownerName = request.getOwnerName() != null ? request.getOwnerName().trim() : "SaaS Restaurant Owner";
+        String loginUsername = request.getEmail() != null && !request.getEmail().trim().isEmpty()
+                ? request.getEmail().trim()
+                : (request.getPhone() != null && !request.getPhone().trim().isEmpty() ? request.getPhone().trim() : restaurantName.toLowerCase().replace(" ", ""));
+        String rawPassword = request.getPassword() != null ? request.getPassword() : "123456";
+        boolean isTest = request.isTest();
+
+        String finalSyncCode = "";
+        String waiterSyncCode = "";
+        java.util.Random random = new java.util.Random();
+        boolean unique = false;
+        while (!unique) {
+            int codeInt = 100000 + random.nextInt(900000);
+            String candidate = "SD-" + codeInt;
+            if (!restaurantRepository.findBySyncCodeAndIsDeletedFalse(candidate).isPresent()) {
+                finalSyncCode = candidate;
+                waiterSyncCode = "WT-" + codeInt;
+                unique = true;
+            }
+        }
+
+        Restaurant restaurant = new Restaurant(restaurantName, finalSyncCode, true);
+        restaurant.setBillerSyncCode(finalSyncCode);
+        restaurant.setWaiterSyncCode(waiterSyncCode);
+        UUID newRestId = UUID.randomUUID();
+        restaurant.setRestaurantId(newRestId);
+        restaurant.setTest(isTest);
+        restaurant = restaurantRepository.save(restaurant);
+
+        AppUser admin = new AppUser();
+        admin.setRestaurantId(newRestId);
+        admin.setUsername(loginUsername);
+        admin.setPassword(passwordEncoder.encode(rawPassword));
+        admin.setRole(UserRole.ADMIN);
+        admin.setFullName(ownerName);
+        admin.setPin("1234");
+        admin.setActive(true);
+        userRepository.save(admin);
+
+        // Save real-world setup data if provided in OnboardingRequest
+        if (request.getTables() != null && !request.getTables().isEmpty()) {
+            for (java.util.Map<String, Object> tableMap : request.getTables()) {
+                DiningTable table = new DiningTable();
+                table.setRestaurantId(newRestId);
+                String tNum = (String) (tableMap.get("number") != null ? tableMap.get("number") : tableMap.get("tableName"));
+                table.setTableNumber(tNum != null ? tNum : "T-01");
+                Object cap = tableMap.get("capacity");
+                table.setCapacity(cap != null ? Integer.parseInt(cap.toString()) : 4);
+                table.setAreaName((String) (tableMap.get("area") != null ? tableMap.get("area") : tableMap.get("areaName")));
+                table.setStatus(TableStatus.AVAILABLE);
+                tableRepository.save(table);
+            }
+        }
+
+        if (request.getMenuCategories() != null && !request.getMenuCategories().isEmpty()) {
+            for (String catName : request.getMenuCategories()) {
+                Category cat = new Category();
+                cat.setRestaurantId(newRestId);
+                cat.setName(catName);
+                categoryRepository.save(cat);
+            }
+        }
+
+        if (request.getMenuItems() != null && !request.getMenuItems().isEmpty()) {
+            for (java.util.Map<String, Object> itemMap : request.getMenuItems()) {
+                MenuItem item = new MenuItem();
+                item.setRestaurantId(newRestId);
+                item.setName((String) itemMap.get("name"));
+                item.setShortCode((String) (itemMap.get("shortCode") != null ? itemMap.get("shortCode") : itemMap.get("code")));
+                item.setCategoryName((String) (itemMap.get("categoryName") != null ? itemMap.get("categoryName") : itemMap.get("category")));
+                Object priceObj = itemMap.get("price");
+                item.setPrice(priceObj != null ? new java.math.BigDecimal(priceObj.toString()) : java.math.BigDecimal.ZERO);
+                Object vegObj = itemMap.get("veg") != null ? itemMap.get("veg") : itemMap.get("isVeg");
+                item.setVeg(vegObj != null ? Boolean.parseBoolean(vegObj.toString()) : true);
+                item.setAvailable(true);
+                menuRepository.save(item);
+            }
+        }
+
+        if ((request.getTables() == null || request.getTables().isEmpty()) && (request.getMenuItems() == null || request.getMenuItems().isEmpty())) {
+            cloudDatabaseSeederService.seedDefaultRestaurantData(newRestId);
+        }
+
+        return java.util.Map.of(
+            "success", true,
+            "syncCode", finalSyncCode,
+            "restaurantId", newRestId.toString()
+        );
     }
 
     @org.springframework.transaction.annotation.Transactional
