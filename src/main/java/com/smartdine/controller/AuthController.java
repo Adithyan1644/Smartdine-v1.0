@@ -35,32 +35,20 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public ResponseEntity<?> register(@Valid @RequestBody RegisterRequest request) {
+    public ResponseEntity<?> register(@RequestBody com.smartdine.dto.OnboardingRequest request) {
         // ── Cloud SQL Routing ────────────────────────────────────────────────────
         // Set the datasource routing key BEFORE the @Transactional service call.
-        // Spring opens the DB connection when the transaction starts; the ThreadLocal
-        // key must already be set at that point so RoutingDataSource picks correctly:
-        //   isTest=true  → DEV  → smartdine_dev (GCP sandbox)
-        //   isTest=false → PROD → smartdine     (GCP production)
         String dsKey = request.isTest() ? DataSourceContextHolder.DEV
                                         : DataSourceContextHolder.PROD;
         DataSourceContextHolder.set(dsKey);
         System.out.println("[AuthController] Registration routing → " + dsKey
                 + " (isTest=" + request.isTest() + ")");
         try {
-            Map<String, Object> result = authService.registerNewTenant(
-                    request.getRestaurantName(),
-                    request.getOwnerName(),
-                    request.getEmail(),
-                    request.getPassword(),
-                    request.isTest()
-            );
+            Map<String, Object> result = authService.registerNewTenant(request);
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
         } finally {
-            // Always clear — prevents stale routing keys leaking into future requests
-            // processed by the same thread pool thread.
             DataSourceContextHolder.clear();
         }
     }
