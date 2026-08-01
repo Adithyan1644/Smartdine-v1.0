@@ -62,10 +62,11 @@ public class AuthService {
         // 3. Try lookup by Restaurant Name
         if (user == null) {
             var restOpt = restaurantRepository.findByNameIgnoreCase(targetCred);
-            if (restOpt.isPresent() && restOpt.get().getRestaurantId() != null) {
-                user = userRepository.findByRestaurantIdAndRole(restOpt.get().getRestaurantId(), UserRole.ADMIN)
+            if (restOpt.isPresent()) {
+                UUID restUuid = restOpt.get().getRestaurantId() != null ? restOpt.get().getRestaurantId() : restOpt.get().getId();
+                user = userRepository.findByRestaurantIdAndRole(restUuid, UserRole.ADMIN)
                         .stream().findFirst()
-                        .orElseGet(() -> userRepository.findByRestaurantId(restOpt.get().getRestaurantId()).stream().findFirst().orElse(null));
+                        .orElseGet(() -> userRepository.findByRestaurantId(restUuid).stream().findFirst().orElse(null));
             }
         }
 
@@ -78,10 +79,11 @@ public class AuthService {
             String finalCode = candidateCode;
             var restOpt = restaurantRepository.findBySyncCodeAndIsDeletedFalse(finalCode)
                     .or(() -> restaurantRepository.findByBillerSyncCode(finalCode));
-            if (restOpt.isPresent() && restOpt.get().getRestaurantId() != null) {
-                user = userRepository.findByRestaurantIdAndRole(restOpt.get().getRestaurantId(), UserRole.ADMIN)
+            if (restOpt.isPresent()) {
+                UUID restUuid = restOpt.get().getRestaurantId() != null ? restOpt.get().getRestaurantId() : restOpt.get().getId();
+                user = userRepository.findByRestaurantIdAndRole(restUuid, UserRole.ADMIN)
                         .stream().findFirst()
-                        .orElseGet(() -> userRepository.findByRestaurantId(restOpt.get().getRestaurantId()).stream().findFirst().orElse(null));
+                        .orElseGet(() -> userRepository.findByRestaurantId(restUuid).stream().findFirst().orElse(null));
             }
         }
 
@@ -106,7 +108,10 @@ public class AuthService {
             String restName = "";
             String syncCode = "";
             if (user.getRestaurantId() != null) {
-                var r = restaurantRepository.findByRestaurantId(user.getRestaurantId()).orElse(null);
+                final UUID uRestId = user.getRestaurantId();
+                var r = restaurantRepository.findByRestaurantId(uRestId)
+                        .or(() -> restaurantRepository.findById(uRestId))
+                        .orElse(null);
                 if (r != null) {
                     restName = r.getName();
                     syncCode = r.getBillerSyncCode() != null ? r.getBillerSyncCode() : r.getSyncCode();
@@ -252,17 +257,19 @@ public class AuthService {
             }
         }
 
+        UUID newRestId = UUID.randomUUID();
         Restaurant restaurant = new Restaurant(restaurantName, finalSyncCode, true);
+        restaurant.setId(newRestId);
+        restaurant.setRestaurantId(newRestId);
         restaurant.setBillerSyncCode(finalSyncCode);
         restaurant.setWaiterSyncCode(waiterSyncCode);
-        UUID newRestId = UUID.randomUUID();
-        restaurant.setRestaurantId(newRestId);
         restaurant.setTest(isTest);
         restaurant = restaurantRepository.save(restaurant);
 
         AppUser admin = new AppUser();
         admin.setRestaurantId(newRestId);
         admin.setUsername(loginUsername);
+        admin.setPhone(request.getPhone() != null ? request.getPhone().trim() : "");
         admin.setPassword(passwordEncoder.encode(rawPassword));
         admin.setRole(UserRole.ADMIN);
         admin.setFullName(ownerName);
