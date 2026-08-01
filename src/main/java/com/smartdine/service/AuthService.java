@@ -34,6 +34,9 @@ public class AuthService {
     @Autowired
     private JwtUtil jwtUtil;
 
+    @Autowired
+    private CloudDatabaseSeederService cloudDatabaseSeederService;
+
     // Professional Login for Admin/Setup
     public AuthResponse authenticateUser(LoginRequest request) {
         if (request == null || request.getUsername() == null) {
@@ -204,25 +207,8 @@ public class AuthService {
         admin.setActive(true);
         userRepository.save(admin);
 
-        // 3. Auto-Provision 4 Default Tables (T-01 to T-04)
-        for (int i = 1; i <= 4; i++) {
-            DiningTable table = new DiningTable();
-            table.setRestaurantId(newRestId);
-            table.setTableNumber(String.format("T-%02d", i));
-            table.setCapacity(4);
-            table.setAreaName("AC Area");
-            table.setStatus(TableStatus.AVAILABLE);
-            tableRepository.save(table);
-        }
-
-        // 4. Auto-Provision 3 Default Categories (Starters, Main Course, Desserts)
-        String[] defaults = {"Starters", "Main Course", "Desserts"};
-        for (String catName : defaults) {
-            Category cat = new Category();
-            cat.setRestaurantId(newRestId);
-            cat.setName(catName);
-            categoryRepository.save(cat);
-        }
+        // 3. Auto-Seed Complete Baseline Configuration (Tables, Categories, Menu Items, Waiters)
+        cloudDatabaseSeederService.seedDefaultRestaurantData(newRestId);
 
         return java.util.Map.of(
             "syncCode", finalSyncCode,
