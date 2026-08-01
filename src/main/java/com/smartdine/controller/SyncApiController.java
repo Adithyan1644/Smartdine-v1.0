@@ -7,6 +7,7 @@ import com.smartdine.repository.OrderRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -18,12 +19,58 @@ import java.util.*;
  * Writes transaction data directly into Google Cloud SQL Master Database.
  */
 @RestController
-@RequestMapping("/api/sync")
+@RequestMapping({"/api/sync", "/sync"})
 @CrossOrigin(origins = "*")
 public class SyncApiController {
 
     @Autowired
     private OrderRepository orderRepository;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    /**
+     * Receives and processes local transaction outbox payloads at /api/sync/process
+     */
+    @PostMapping("/process")
+    public ResponseEntity<?> processSyncEvent(
+            @RequestParam(name = "type", required = false, defaultValue = "ORDER") String eventType,
+            @RequestBody(required = false) String payloadJson) {
+
+        System.out.println("📶 [Cloud Gateway] Processing incoming sync event of type: " + eventType);
+
+        if (payloadJson == null || payloadJson.trim().isEmpty()) {
+            return ResponseEntity.ok(Map.of("success", true, "message", "Heartbeat event acknowledged"));
+        }
+
+        try {
+            Map<String, Object> payload = objectMapper.readValue(payloadJson, Map.class);
+            UUID restaurantId = null;
+            if (payload.get("restaurantId") != null && !payload.get("restaurantId").toString().trim().isEmpty()) {
+                try {
+                    restaurantId = UUID.fromString(payload.get("restaurantId").toString().trim());
+                } catch (Exception ignored) {}
+            }
+
+            if ("ORDER".equalsIgnoreCase(eventType) || "ORDER_SETTLED".equalsIgnoreCase(eventType) || "ORDER_CREATED".equalsIgnoreCase(eventType)) {
+                Order order = mapPayloadToOrder(payload);
+                if (restaurantId != null) {
+                    order.setRestaurantId(restaurantId);
+                }
+                orderRepository.save(order);
+                System.out.println("✅ Order [" + order.getOrderNumber() + "] committed to GCP Cloud SQL.");
+            } else if ("MENU_UPDATE".equalsIgnoreCase(eventType) || "MENU".equalsIgnoreCase(eventType)) {
+                System.out.println("Menu update event received on cloud for Restaurant ID: " + restaurantId);
+            } else {
+                System.out.println("Notice: Received sync event type: " + eventType);
+            }
+
+            return ResponseEntity.ok(Map.of("success", true, "message", "Event processed successfully"));
+
+        } catch (Exception e) {
+            System.err.println("Failed to process cloud sync payload: " + e.getMessage());
+            return ResponseEntity.status(500).body(Map.of("error", "Failed to process payload: " + e.getMessage()));
+        }
+    }
 
     @PostMapping("/orders")
     public ResponseEntity<?> syncSingleOrder(@RequestBody Map<String, Object> payload) {
