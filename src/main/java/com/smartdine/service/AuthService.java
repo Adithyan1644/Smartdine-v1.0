@@ -41,6 +41,7 @@ public class AuthService {
     private CloudDatabaseSeederService cloudDatabaseSeederService;
 
     // Professional Multi-Credential Login for Admin/Setup (User ID, Phone Number, Restaurant Name, Email, Sync Code)
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public AuthResponse authenticateUser(LoginRequest request) {
         if (request == null || request.getUsername() == null) {
             throw new RuntimeException("User ID, Phone Number, Restaurant Name, or Sync Code is required");

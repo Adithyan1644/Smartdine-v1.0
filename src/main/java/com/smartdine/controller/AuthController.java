@@ -36,13 +36,15 @@ public class AuthController {
             AuthResponse response = authService.authenticateUser(request);
             return ResponseEntity.ok(response);
         } catch (Exception prodEx) {
+            System.err.println("[AuthController] PROD Login Exception: " + prodEx.getMessage());
             try {
                 DataSourceContextHolder.set(DataSourceContextHolder.DEV);
                 AuthResponse response = authService.authenticateUser(request);
                 return ResponseEntity.ok(response);
             } catch (Exception devEx) {
+                System.err.println("[AuthController] DEV Login Exception: " + devEx.getMessage());
                 String msg = prodEx.getMessage() != null ? prodEx.getMessage() : "Invalid Credentials";
-                return ResponseEntity.badRequest().body(Map.of("status", "failed", "error", msg));
+                return ResponseEntity.badRequest().body(Map.of("status", "failed", "error", msg, "devError", devEx.getMessage() != null ? devEx.getMessage() : ""));
             }
         } finally {
             DataSourceContextHolder.clear();
