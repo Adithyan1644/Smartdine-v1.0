@@ -64,19 +64,46 @@ public class ProvisioningController {
 
 
     @PostMapping("/report-ip")
-    public ResponseEntity<String> reportLocalIp(
-            @RequestHeader("X-Restaurant-ID") UUID restaurantId,
-            @RequestParam("ip") String ipAddress) {
-        
-        Restaurant restaurant = restaurantRepository.findByRestaurantId(restaurantId)
-                .or(() -> restaurantRepository.findById(restaurantId))
-                .orElseThrow(() -> new RuntimeException("Restaurant not found"));
-        
-        restaurant.setActiveLocalIp(ipAddress);
-        restaurantRepository.save(restaurant);
-        
-        System.out.println("☁️ GCP Cloud: Registered IP [" + ipAddress + "] for Restaurant: " + restaurant.getName());
-        return ResponseEntity.ok("IP Registered");
+    public ResponseEntity<?> reportLocalIp(
+            @RequestHeader(name = "X-Restaurant-ID", required = false) UUID restaurantIdHeader,
+            @RequestBody(required = false) Map<String, Object> body,
+            @RequestParam(name = "ip", required = false) String ipParam,
+            @RequestParam(name = "restaurantId", required = false) String restIdParam) {
+
+        UUID targetId = restaurantIdHeader;
+        String targetIp = ipParam;
+
+        if (body != null) {
+            if (body.get("restaurantId") != null && !body.get("restaurantId").toString().trim().isEmpty()) {
+                try { targetId = UUID.fromString(body.get("restaurantId").toString().trim()); } catch (Exception ignored) {}
+            }
+            if (body.get("localIp") != null) {
+                targetIp = body.get("localIp").toString();
+            } else if (body.get("ip") != null) {
+                targetIp = body.get("ip").toString();
+            }
+        }
+        if (targetId == null && restIdParam != null && !restIdParam.trim().isEmpty()) {
+            try { targetId = UUID.fromString(restIdParam.trim()); } catch (Exception ignored) {}
+        }
+
+        if (targetId == null) {
+            return ResponseEntity.ok(Map.of("success", true, "message", "IP report acknowledged"));
+        }
+
+        UUID finalId = targetId;
+        Restaurant restaurant = restaurantRepository.findByRestaurantId(finalId)
+                .or(() -> restaurantRepository.findById(finalId))
+                .orElse(null);
+
+        if (restaurant != null && targetIp != null) {
+            restaurant.setActiveLocalIp(targetIp);
+            restaurantRepository.save(restaurant);
+            System.out.println("📶 [ProvisioningController] Updated active local IP to " + targetIp + " for restaurant " + restaurant.getName());
+            return ResponseEntity.ok(Map.of("success", true, "localIp", targetIp));
+        }
+
+        return ResponseEntity.ok(Map.of("success", true, "message", "IP report received"));
     }
 
     @GetMapping("/active-ip")

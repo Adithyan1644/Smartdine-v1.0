@@ -19,7 +19,7 @@ import java.util.*;
  * Writes transaction data directly into Google Cloud SQL Master Database.
  */
 @RestController
-@RequestMapping({"/api/sync", "/sync"})
+@RequestMapping("/api/sync")
 @CrossOrigin(origins = "*")
 public class SyncApiController {
 
