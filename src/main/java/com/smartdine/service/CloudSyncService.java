@@ -22,9 +22,9 @@ public class CloudSyncService {
     private final JdbcTemplate jdbcTemplate;
     private final RestTemplate restTemplate;
 
-    // Direct points to active GCP App Engine cloud gateways
-    private final String DEV_CLOUD_URL = "https://smartdine-saas.ew.r.appspot.com/api/sync/process";
-    private final String PROD_CLOUD_URL = "https://smartdine-saas.ew.r.appspot.com/api/sync/process";
+    // Direct points to active GCP App Engine cloud endpoints
+    private final String DEV_CLOUD_URL = "https://smartdine-saas.ew.r.appspot.com/api/sync/orders";
+    private final String PROD_CLOUD_URL = "https://smartdine-saas.ew.r.appspot.com/api/sync/orders";
     private final String REPORT_IP_URL = "https://smartdine-saas.ew.r.appspot.com/api/public/provision/report-ip";
 
     public CloudSyncService(JdbcTemplate jdbcTemplate) {
@@ -95,17 +95,16 @@ public class CloudSyncService {
                 continue;
             }
 
-            String eventType = (String) event.get("event_type");
             String payloadJson = (String) event.get("payload");
 
             try {
-                // Post payload to the designated cloud gateway (DEV or PROD)
+                // Post payload directly to the active Cloud SQL sync endpoint
                 HttpEntity<String> request = new HttpEntity<>(payloadJson, headers);
-                restTemplate.postForEntity(activeGatewayUrl + "?type=" + eventType, request, String.class);
+                restTemplate.postForEntity(activeGatewayUrl, request, String.class);
 
                 // Update outbox state to prevent duplicate processing
                 jdbcTemplate.update("UPDATE sync_outbox SET synced = true, synced_at = CURRENT_TIMESTAMP WHERE id = ?", eventId);
-                System.out.println("Sync Succeeded: Sent outbox transaction [" + eventId + "] successfully.");
+                System.out.println("Sync Succeeded: Sent outbox transaction [" + eventId + "] successfully to Google Cloud.");
 
             } catch (Exception e) {
                 System.err.println("Sync Failed: Unable to transmit outbox transaction [" + eventId + "]. Connection held for retry: " + e.getMessage());
@@ -126,12 +125,11 @@ public class CloudSyncService {
             if (restId != null && !restId.trim().isEmpty()) {
                 HttpHeaders headers = new HttpHeaders();
                 headers.setContentType(MediaType.APPLICATION_JSON);
+                headers.set("X-Restaurant-ID", restId.trim());
 
-                String payload = String.format("{\"restaurantId\":\"%s\",\"localIp\":\"%s\"}", restId, localIp);
-                HttpEntity<String> request = new HttpEntity<>(payload, headers);
-
+                HttpEntity<String> request = new HttpEntity<>("", headers);
                 try {
-                    restTemplate.postForEntity(REPORT_IP_URL, request, String.class);
+                    restTemplate.postForEntity(REPORT_IP_URL + "?ip=" + localIp, request, String.class);
                     System.out.println("📶 [Cloud Sync] Successfully registered local IP (" + localIp + ") on Google Cloud.");
                 } catch (Exception ignored) {}
             }

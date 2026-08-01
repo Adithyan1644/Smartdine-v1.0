@@ -283,9 +283,8 @@ public class AuthService {
             }
         }
 
-        if ((request.getTables() == null || request.getTables().isEmpty()) && (request.getMenuItems() == null || request.getMenuItems().isEmpty())) {
-            cloudDatabaseSeederService.seedDefaultRestaurantData(newRestId);
-        }
+        // Clean-slate multi-environment architecture: zero dummy data seeding
+        // Custom operational data is saved directly above when provided by merchant.
 
         return java.util.Map.of(
             "success", true,

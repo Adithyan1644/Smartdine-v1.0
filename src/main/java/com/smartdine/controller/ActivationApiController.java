@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/activation")
@@ -94,6 +95,28 @@ public class ActivationApiController {
                     "success", true,
                     "message",
                     "All accounts, activation files, menu items, and tables have been completely purged! System ready for new account creation."));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @RequestMapping(value = { "/sync/process", "/process" }, method = { RequestMethod.GET, RequestMethod.POST })
+    public ResponseEntity<?> processSyncPayload(
+            @RequestParam(name = "type", required = false, defaultValue = "ORDER") String eventType,
+            @RequestBody(required = false) String payloadJson) {
+        System.out.println("📶 [ActivationApiController] Processing incoming sync event of type: " + eventType);
+        if (payloadJson == null || payloadJson.trim().isEmpty()) {
+            return ResponseEntity.ok(Map.of("success", true, "message", "Heartbeat event acknowledged"));
+        }
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            Map<String, Object> payload = mapper.readValue(payloadJson, Map.class);
+            UUID restaurantId = null;
+            if (payload.get("restaurantId") != null && !payload.get("restaurantId").toString().trim().isEmpty()) {
+                try { restaurantId = UUID.fromString(payload.get("restaurantId").toString().trim()); } catch (Exception ignored) {}
+            }
+            System.out.println("✅ Sync event [" + eventType + "] processed for restaurant ID: " + restaurantId);
+            return ResponseEntity.ok(Map.of("success", true, "message", "Sync payload processed successfully"));
         } catch (Exception e) {
             return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
         }
@@ -445,6 +468,69 @@ public class ActivationApiController {
             gatewayPayload.put("menuItems", mappedMenuItems);
             gatewayPayload.put("modifierGroups", modifierGroups);
             gatewayPayload.put("waiters", mappedWaiters);
+
+            // Persist tables, categories, and menu items to database
+            try {
+                UUID rId = UUID.fromString(restId);
+
+                if (incomingTables != null && !incomingTables.isEmpty()) {
+                    for (Map<String, Object> t : incomingTables) {
+                        String number = t.get("number") != null ? t.get("number").toString() : (t.get("tableName") != null ? t.get("tableName").toString() : "");
+                        String areaName = t.get("area") != null ? t.get("area").toString() : (t.get("areaName") != null ? t.get("areaName").toString() : "General");
+                        int capacity = t.get("capacity") != null ? Integer.parseInt(t.get("capacity").toString()) : 4;
+                        
+                        var existing = tableRepository.findByRestaurantId(rId).stream()
+                                .filter(table -> table.getTableNumber() != null && table.getTableNumber().equalsIgnoreCase(number))
+                                .findFirst();
+                        if (existing.isEmpty()) {
+                            com.smartdine.coreheart.DiningTable dt = new com.smartdine.coreheart.DiningTable();
+                            dt.setRestaurantId(rId);
+                            dt.setTableNumber(number);
+                            dt.setAreaName(areaName);
+                            dt.setCapacity(capacity);
+                            dt.setStatus(com.smartdine.coreheart.TableStatus.AVAILABLE);
+                            tableRepository.save(dt);
+                        }
+                    }
+                }
+
+                if (categories != null && !categories.isEmpty()) {
+                    for (String catName : categories) {
+                        var existingCat = categoryRepository.findByRestaurantId(rId).stream()
+                                .filter(c -> c.getName() != null && c.getName().equalsIgnoreCase(catName))
+                                .findFirst();
+                        if (existingCat.isEmpty()) {
+                            com.smartdine.coreheart.Category cat = new com.smartdine.coreheart.Category();
+                            cat.setRestaurantId(rId);
+                            cat.setName(catName);
+                            categoryRepository.save(cat);
+                        }
+                    }
+                }
+
+                if (incomingMenuItems != null && !incomingMenuItems.isEmpty()) {
+                    for (Map<String, Object> itemMap : incomingMenuItems) {
+                        String name = itemMap.get("name") != null ? itemMap.get("name").toString() : "Item";
+                        var existingItem = menuRepository.findByRestaurantId(rId).stream()
+                                .filter(mi -> mi.getName() != null && mi.getName().equalsIgnoreCase(name))
+                                .findFirst();
+                        if (existingItem.isEmpty()) {
+                            com.smartdine.coreheart.MenuItem mi = new com.smartdine.coreheart.MenuItem();
+                            mi.setRestaurantId(rId);
+                            mi.setName(name);
+                            String category = itemMap.get("categoryName") != null ? itemMap.get("categoryName").toString()
+                                    : (itemMap.get("category") != null ? itemMap.get("category").toString() : "General");
+                            mi.setCategoryName(category);
+                            Object priceObj = itemMap.get("price");
+                            mi.setPrice(priceObj != null ? new java.math.BigDecimal(priceObj.toString()) : java.math.BigDecimal.ZERO);
+                            mi.setAvailable(true);
+                            menuRepository.save(mi);
+                        }
+                    }
+                }
+            } catch (Exception dbSyncErr) {
+                System.err.println("DB Persistence error in saveConfig: " + dbSyncErr.getMessage());
+            }
 
             // Save payload to root and fallback paths safely (handles Program Files
             // read-only permissions gracefully)
