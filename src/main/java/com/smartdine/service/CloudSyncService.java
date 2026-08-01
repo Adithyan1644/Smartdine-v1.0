@@ -4,13 +4,13 @@ import com.smartdine.coreheart.Order;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.InetAddress;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,9 +22,10 @@ public class CloudSyncService {
     private final JdbcTemplate jdbcTemplate;
     private final RestTemplate restTemplate;
 
-    // Direct points to cloud gateways
-    private final String DEV_CLOUD_URL = "https://smartdine-v1-0-git-635032287458.europe-west1.run.app/api/sync/process";
-    private final String PROD_CLOUD_URL = "https://smartdine-saas-prod.appspot.com/api/sync/process";
+    // Direct points to active GCP App Engine cloud gateways
+    private final String DEV_CLOUD_URL = "https://smartdine-saas.ew.r.appspot.com/api/sync/process";
+    private final String PROD_CLOUD_URL = "https://smartdine-saas.ew.r.appspot.com/api/sync/process";
+    private final String REPORT_IP_URL = "https://smartdine-saas.ew.r.appspot.com/api/public/provision/report-ip";
 
     public CloudSyncService(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
@@ -49,7 +50,6 @@ public class CloudSyncService {
                     "SELECT id, event_type, payload, created_at FROM sync_outbox WHERE synced = false ORDER BY created_at ASC LIMIT 10"
             );
         } catch (Exception e) {
-            // Outbox table not created or query failed silently
             return;
         }
 
@@ -114,8 +114,34 @@ public class CloudSyncService {
         }
     }
 
+    @Scheduled(fixedDelay = 60000)
+    public void reportLocalIpToCloud() {
+        try {
+            String localIp = InetAddress.getLocalHost().getHostAddress();
+            String restId = null;
+            try {
+                restId = jdbcTemplate.queryForObject("SELECT restaurant_id FROM system_config LIMIT 1", String.class);
+            } catch (Exception ignored) {}
+
+            if (restId != null && !restId.trim().isEmpty()) {
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_JSON);
+
+                String payload = String.format("{\"restaurantId\":\"%s\",\"localIp\":\"%s\"}", restId, localIp);
+                HttpEntity<String> request = new HttpEntity<>(payload, headers);
+
+                try {
+                    restTemplate.postForEntity(REPORT_IP_URL, request, String.class);
+                    System.out.println("📶 [Cloud Sync] Successfully registered local IP (" + localIp + ") on Google Cloud.");
+                } catch (Exception ignored) {}
+            }
+        } catch (Exception e) {
+            System.err.println("⚠️ Cloud Sync: Failed to register local IP on Google Cloud: " + e.getMessage());
+        }
+    }
+
     /**
-     * Legacy helper method: Enqueues a order into sync_outbox.
+     * Legacy helper method: Enqueues an order into sync_outbox.
      */
     @Async
     public void syncOrderToCloud(Order order) {
