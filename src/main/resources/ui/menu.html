@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Surabhi SmartDine — Menu & Stock Management</title>
+<title>SmartDine — Menu & Stock Management</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -179,7 +179,7 @@ input:checked + .slider:before{transform:translateX(14px)}
     <!-- TOPBAR -->
     <header class="topbar">
       <div class="tb-brand">
-        <div class="name">Surabhi SmartDine — Menu Management</div>
+        <div class="name">SmartDine — Menu Management</div>
         <div class="sub">Live Database Catalog Control Panel</div>
       </div>
       
@@ -363,8 +363,28 @@ const defaultItems = [];
 
 let menuItems = [];
 
-// Initialize database with javaApp bridge or local storage fallback
+// Initialize database with live REST API, javaApp bridge or local storage fallback
 function initDatabase() {
+  fetch('/api/menu-items')
+    .then(r => r.json())
+    .then(data => {
+      if (Array.isArray(data) && data.length > 0) {
+        menuItems = data.map(item => ({
+          code: item.shortCode || item.code || 'M',
+          name: item.name,
+          category: item.categoryName || item.category || 'General',
+          price: item.price,
+          status: item.available !== false ? 'available' : 'unavailable',
+          todaysMenu: item.todaysMenu !== false,
+          stock: 'in_stock'
+        }));
+        populateCategories();
+        updateStats();
+        renderTable();
+      }
+    })
+    .catch(() => {});
+
   if (window.javaApp) {
     try {
       const jsonStr = window.javaApp.getMenuItemsJson();
@@ -377,7 +397,7 @@ function initDatabase() {
     }
   }
   try {
-    const stored = localStorage.getItem("surabhi_menu_items");
+    const stored = localStorage.getItem("smartdine_menu_items") || localStorage.getItem("surabhi_menu_items");
     if (stored) {
       menuItems = JSON.parse(stored);
     } else {

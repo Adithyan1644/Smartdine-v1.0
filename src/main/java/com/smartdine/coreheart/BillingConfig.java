@@ -23,7 +23,7 @@ public class BillingConfig implements Serializable {
     private UUID restaurantId;
 
     @Column(name = "restaurant_name")
-    private String restaurantName = "Surabhi Foods";
+    private String restaurantName = "SmartDine Outlet";
 
     @Column(name = "address_line1")
     private String addressLine1 = "";

@@ -40,6 +40,9 @@ public class AuthService {
     @Autowired
     private CloudDatabaseSeederService cloudDatabaseSeederService;
 
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
     // Professional Multi-Credential Login for Admin/Setup (User ID, Phone Number, Restaurant Name, Email, Sync Code)
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public AuthResponse authenticateUser(LoginRequest request) {
@@ -260,7 +263,6 @@ public class AuthService {
 
         UUID newRestId = UUID.randomUUID();
         Restaurant restaurant = new Restaurant(restaurantName, finalSyncCode, true);
-        restaurant.setId(newRestId);
         restaurant.setRestaurantId(newRestId);
         restaurant.setBillerSyncCode(finalSyncCode);
         restaurant.setWaiterSyncCode(waiterSyncCode);
@@ -279,6 +281,18 @@ public class AuthService {
         userRepository.save(admin);
 
         // Save real-world setup data if provided in OnboardingRequest
+        if (request.getAreas() != null && !request.getAreas().isEmpty()) {
+            for (String areaName : request.getAreas()) {
+                if (areaName != null && !areaName.trim().isEmpty()) {
+                    try {
+                        jdbcTemplate.update("INSERT INTO areas (id, name, restaurant_id) VALUES (?, ?, ?)", UUID.randomUUID(), areaName.trim(), newRestId);
+                    } catch (Exception e) {
+                        System.err.println("Area table insert notice: " + e.getMessage());
+                    }
+                }
+            }
+        }
+
         if (request.getTables() != null && !request.getTables().isEmpty()) {
             for (java.util.Map<String, Object> tableMap : request.getTables()) {
                 DiningTable table = new DiningTable();

@@ -57,7 +57,7 @@ public class UiLauncher extends Application {
         }
 
         String fxmlPath = activated ? "/ui/login.fxml" : "/ui/activation.fxml";
-        String title = activated ? "Surabhi SmartDine Login" : "Surabhi SmartDine Setup Wizard";
+        String title = activated ? "SmartDine Login" : "SmartDine Setup Wizard";
 
         FXMLLoader loader = new FXMLLoader(getClass().getResource(fxmlPath));
         // This line is the magic: it allows Spring to @Autowire repositories into JavaFX Controllers!

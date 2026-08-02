@@ -23,8 +23,8 @@ public class CloudIpReporter implements CommandLineRunner {
     private final RestTemplate restTemplate = new RestTemplate();
     private static final UUID FALLBACK_DEV_ID = UUID.fromString("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"); // Dev ID
 
-    // Deployed GCP Cloud Run Gateway URL
-    private final String CLOUD_REPORT_URL = "https://smartdine-v1-0-git-635032287458.europe-west1.run.app/api/public/provision/report-ip?ip=";
+    // Deployed GCP Cloud App Engine Gateway URL
+    private final String CLOUD_REPORT_URL = "https://smartdine-saas.ew.r.appspot.com/api/public/provision/report-ip?ip=";
 
     @Override
     public void run(String... args) {
@@ -53,8 +53,10 @@ public class CloudIpReporter implements CommandLineRunner {
 
         try {
             HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
             headers.set("X-Restaurant-ID", restaurantId.toString());
-            HttpEntity<String> entity = new HttpEntity<>(headers);
+            java.util.Map<String, Object> bodyMap = java.util.Map.of("restaurantId", restaurantId.toString(), "localIp", localIp);
+            HttpEntity<java.util.Map<String, Object>> entity = new HttpEntity<>(bodyMap, headers);
 
             restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
             System.out.println("☁️ Cloud Sync: Registered local IP [" + localIp + "] securely on Google Cloud (Restaurant: " + restaurantId + ").");

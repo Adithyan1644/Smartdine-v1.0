@@ -34,17 +34,31 @@ public class AuthController {
         try {
             DataSourceContextHolder.set(DataSourceContextHolder.PROD);
             AuthResponse response = authService.authenticateUser(request);
-            return ResponseEntity.ok(response);
+            Map<String, Object> respMap = new java.util.HashMap<>();
+            respMap.put("token", response.getToken());
+            respMap.put("role", response.getRole());
+            respMap.put("restaurantId", response.getRestaurantId());
+            respMap.put("restaurantName", response.getRestaurantName());
+            respMap.put("syncCode", response.getSyncCode());
+            respMap.put("environment", "PROD");
+            return ResponseEntity.ok(respMap);
         } catch (Exception prodEx) {
             System.err.println("[AuthController] PROD Login Exception: " + prodEx.getMessage());
             try {
                 DataSourceContextHolder.set(DataSourceContextHolder.DEV);
                 AuthResponse response = authService.authenticateUser(request);
-                return ResponseEntity.ok(response);
+                Map<String, Object> respMap = new java.util.HashMap<>();
+                respMap.put("token", response.getToken());
+                respMap.put("role", response.getRole());
+                respMap.put("restaurantId", response.getRestaurantId());
+                respMap.put("restaurantName", response.getRestaurantName());
+                respMap.put("syncCode", response.getSyncCode());
+                respMap.put("environment", "DEV");
+                return ResponseEntity.ok(respMap);
             } catch (Exception devEx) {
                 System.err.println("[AuthController] DEV Login Exception: " + devEx.getMessage());
                 String msg = prodEx.getMessage() != null ? prodEx.getMessage() : "Invalid Credentials";
-                return ResponseEntity.badRequest().body(Map.of("status", "failed", "error", msg, "devError", devEx.getMessage() != null ? devEx.getMessage() : ""));
+                return ResponseEntity.status(401).body(Map.of("status", "failed", "error", msg, "devError", devEx.getMessage() != null ? devEx.getMessage() : ""));
             }
         } finally {
             DataSourceContextHolder.clear();

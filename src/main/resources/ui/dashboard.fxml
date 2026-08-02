@@ -75,7 +75,7 @@
                <children>
                   <VBox alignment="CENTER_LEFT">
                      <children>
-                        <Label text="Surabhi SmartDine" styleClass="brand-title" />
+                        <Label fx:id="brandTitleLabel" text="SmartDine" styleClass="brand-title" />
                         <Label text="Powered by Oraaco Intelligence" styleClass="brand-subtitle" />
                      </children>
                   </VBox>

@@ -12,6 +12,7 @@ public class RestaurantConfigDTO implements Serializable {
     private List<Map<String, Object>> areas;
     private List<Map<String, Object>> tables;
     private List<Map<String, Object>> menuCategories;
+    private List<String> categories;
     private List<Map<String, Object>> menuItems;
     private List<Map<String, Object>> modifierGroups;
 
@@ -34,6 +35,9 @@ public class RestaurantConfigDTO implements Serializable {
 
     public List<Map<String, Object>> getMenuCategories() { return menuCategories; }
     public void setMenuCategories(List<Map<String, Object>> menuCategories) { this.menuCategories = menuCategories; }
+
+    public List<String> getCategories() { return categories; }
+    public void setCategories(List<String> categories) { this.categories = categories; }
 
     public List<Map<String, Object>> getMenuItems() { return menuItems; }
     public void setMenuItems(List<Map<String, Object>> menuItems) { this.menuItems = menuItems; }

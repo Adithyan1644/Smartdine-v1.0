@@ -241,6 +241,9 @@ public class UiDashboardController implements Initializable {
     private Button tblFilterReservedBtn;
 
     @FXML
+    private Label brandTitleLabel;
+
+    @FXML
     private VBox top8ItemsContainer;
 
     @FXML
@@ -1541,12 +1544,9 @@ public class UiDashboardController implements Initializable {
                     .collect(java.util.stream.Collectors.groupingBy(
                             t -> {
                                 String area = t.getAreaName();
-                                if (area == null)
-                                    return "AC Area";
-                                if (!area.toLowerCase().contains("area")) {
-                                    return area + " Area";
-                                }
-                                return area;
+                                if (area == null || area.trim().isEmpty() || "null".equalsIgnoreCase(area))
+                                    return "Main Section";
+                                return area.trim();
                             },
                             java.util.LinkedHashMap::new,
                             java.util.stream.Collectors.toList()));
@@ -2050,11 +2050,27 @@ public class UiDashboardController implements Initializable {
                         && !i.getName().toLowerCase().startsWith("addon:"))
                 .toList();
         if (dbItems.isEmpty()) {
-            dbItems = menuRepository.findAll().stream()
-                    .filter(i -> !i.isDeleted() && i.getName() != null && !i.getName().startsWith("↳ ") 
+            List<MenuItem> allList = menuRepository.findAll();
+            if (allList != null && !allList.isEmpty()) {
+                for (MenuItem m : allList) {
+                    if (m.getRestaurantId() == null || !m.getRestaurantId().equals(rid)) {
+                        m.setRestaurantId(rid);
+                        try { menuRepository.save(m); } catch (Exception ignored) {}
+                    }
+                }
+            }
+            dbItems = menuRepository.findByRestaurantIdAndIsDeletedFalse(rid).stream()
+                    .filter(i -> i.getName() != null && !i.getName().startsWith("↳ ") 
                             && !"Addon".equalsIgnoreCase(i.getCategoryName()) 
                             && !i.getName().toLowerCase().startsWith("addon:"))
                     .toList();
+            if (dbItems.isEmpty() && allList != null) {
+                dbItems = allList.stream()
+                        .filter(i -> !i.isDeleted() && i.getName() != null && !i.getName().startsWith("↳ ") 
+                                && !"Addon".equalsIgnoreCase(i.getCategoryName()) 
+                                && !i.getName().toLowerCase().startsWith("addon:"))
+                        .toList();
+            }
         }
 
         List<MenuItem> topItems = dbItems.stream().limit(8).toList();
@@ -4874,16 +4890,8 @@ public class UiDashboardController implements Initializable {
         if (list == null || list.isEmpty()) {
             list = tableRepository.findAll();
         }
-        if (list == null || list.isEmpty()) {
-            saveFallbackTable("T-01", 4, "AC Area");
-            saveFallbackTable("T-02", 2, "AC Area");
-            saveFallbackTable("T-03", 4, "AC Area");
-            saveFallbackTable("T-04", 6, "AC Area");
-            saveFallbackTable("T-05", 2, "Garden");
-            saveFallbackTable("T-06", 4, "Garden");
-            saveFallbackTable("T-07", 4, "Garden");
-            saveFallbackTable("T-08", 8, "Garden");
-            list = tableRepository.findAll();
+        if (list == null) {
+            list = new ArrayList<>();
         }
 
         java.util.Map<String, DiningTable> uniqueMap = new java.util.LinkedHashMap<>();
@@ -4968,6 +4976,9 @@ public class UiDashboardController implements Initializable {
     }
 
     private void renderTablesToUiSync(List<DiningTable> tablesList, List<Order> activeOrders, List<KOT> activeKots) {
+        if (brandTitleLabel != null) {
+            brandTitleLabel.setText("SmartDine");
+        }
         tablesContainer.getChildren().clear();
 
         int activeKCount = activeKots.size();
@@ -9309,16 +9320,19 @@ public class UiDashboardController implements Initializable {
     @FXML
     public void handleSyncFromCloud(javafx.event.ActionEvent event) {
         com.smartdine.coreheart.SystemConfig config = systemConfigRepository.findAll().stream().findFirst().orElse(null);
-        if (config == null || !config.isActivated()) {
-            showAlert("Sync Failed", "System is not activated yet. Please activate first.");
+        String defaultCode = (config != null && config.getActivationCode() != null) ? config.getActivationCode().trim() : "";
+
+        javafx.scene.control.TextInputDialog dialog = new javafx.scene.control.TextInputDialog(defaultCode);
+        dialog.setTitle("Sync Web Config");
+        dialog.setHeaderText("Sync JavaFX POS with Cloud SQL");
+        dialog.setContentText("Enter your Restaurant Sync Code (e.g. SD-XXXXXX):");
+
+        java.util.Optional<String> result = dialog.showAndWait();
+        if (result.isEmpty() || result.get().trim().isEmpty()) {
             return;
         }
 
-        String activationCode = config.getActivationCode();
-        if (activationCode == null || activationCode.trim().isEmpty()) {
-            showAlert("Sync Failed", "Activation code is missing or empty.");
-            return;
-        }
+        final String activationCode = result.get().trim();
 
         javafx.scene.control.Button sourceBtn = (javafx.scene.control.Button) event.getSource();
         String originalText = sourceBtn.getText();

@@ -45,6 +45,9 @@ public class DataSeeder implements CommandLineRunner {
     // We keep the Restaurant ID fixed so your Waiter phone never loses sync!
     private UUID REST_ID = UUID.fromString("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11");
 
+    @Autowired
+    private com.smartdine.service.ActivationService activationService;
+
     @Override
     public void run(String... args) {
         try {
@@ -60,7 +63,7 @@ public class DataSeeder implements CommandLineRunner {
             return;
         }
 
-        // Trigger mDNS register on startup if already activated
+        // Trigger mDNS register & auto-sync from Cloud SQL on startup
         SystemConfig config = systemConfigRepository.findAll().stream().findFirst().orElse(null);
         if (config != null) {
             REST_ID = config.getRestaurantId();
@@ -72,6 +75,19 @@ public class DataSeeder implements CommandLineRunner {
                 defaultSettings.setTaxEnabled(true);
                 defaultSettings.setTaxRatePercentage(2.5);
                 restaurantSettingsRepository.saveAndFlush(defaultSettings);
+            }
+
+            final String syncCode = config.getActivationCode();
+            if (syncCode != null && !syncCode.trim().isEmpty()) {
+                Thread.ofVirtual().start(() -> {
+                    try {
+                        System.out.println("🔄 [DataSeeder] Auto-syncing real Cloud SQL data for " + syncCode + "...");
+                        activationService.activateSystem(syncCode.trim(), "https://smartdine-saas.ew.r.appspot.com/api/public/provision");
+                        System.out.println("✅ [DataSeeder] Real Cloud SQL data auto-synced successfully on JavaFX boot!");
+                    } catch (Exception e) {
+                        System.err.println("⚠️ [DataSeeder] Cloud auto-sync skipped (offline/cached): " + e.getMessage());
+                    }
+                });
             }
         }
 

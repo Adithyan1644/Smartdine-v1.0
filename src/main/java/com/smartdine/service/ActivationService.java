@@ -207,30 +207,64 @@ public class ActivationService {
                 Thread.ofVirtual().start(cloudIpReporter::reportIpToCloud);
             }
 
+            // Purge old stale local records before seeding fresh cloud configuration
+            try {
+                tableRepository.deleteAll();
+                categoryRepository.deleteAll();
+                menuRepository.deleteAll();
+            } catch (Exception ignored) {}
+
             // 5. Seed Tables
             List<Map<String, Object>> tableList = (List<Map<String, Object>>) config.get("tables");
             if (tableList != null) {
                 for (Map<String, Object> tbl : tableList) {
                     DiningTable table = new DiningTable();
                     table.setRestaurantId(restaurantId);
-                    table.setTableNumber((String) tbl.get("tableNumber"));
-                    table.setCapacity((Integer) tbl.get("capacity"));
-                    table.setAreaName((String) tbl.get("areaName"));
+                    String tNum = (String) (tbl.get("tableNumber") != null ? tbl.get("tableNumber") : tbl.get("number"));
+                    table.setTableNumber(tNum != null ? tNum : "T-01");
+                    Object capObj = tbl.get("capacity");
+                    int capacity = capObj != null ? Integer.parseInt(capObj.toString()) : 4;
+                    table.setCapacity(capacity);
+                    String areaName = null;
+                    if (tbl.get("areaName") != null) areaName = tbl.get("areaName").toString();
+                    else if (tbl.get("area") != null) areaName = tbl.get("area").toString();
+                    else if (tbl.get("area_name") != null) areaName = tbl.get("area_name").toString();
+                    else if (tbl.get("zone") != null) areaName = tbl.get("zone").toString();
+                    else if (tbl.get("section") != null) areaName = tbl.get("section").toString();
+
+                    if (areaName == null || areaName.trim().isEmpty() || "null".equalsIgnoreCase(areaName)) {
+                        areaName = "General Area";
+                    }
+                    table.setAreaName(areaName.trim());
                     table.setStatus(TableStatus.AVAILABLE);
                     tableRepository.save(table);
                 }
             }
 
             // 6. Seed Categories
-            List<String> catList = (List<String>) config.get("categories");
+            List<Map<String, Object>> itemsListForCats = (List<Map<String, Object>>) config.get("menuItems");
+            List<Object> catListRaw = (List<Object>) (config.get("categories") != null ? config.get("categories") : config.get("menuCategories"));
+            if ((catListRaw == null || catListRaw.isEmpty()) && itemsListForCats != null) {
+                java.util.Set<String> derivedCats = new java.util.LinkedHashSet<>();
+                for (Map<String, Object> itm : itemsListForCats) {
+                    String c = (String) (itm.get("categoryName") != null ? itm.get("categoryName") : itm.get("category"));
+                    if (c != null && !c.trim().isEmpty()) derivedCats.add(c.trim());
+                }
+                catListRaw = new ArrayList<>(derivedCats);
+            }
+
             Map<String, Category> categoryMap = new HashMap<>();
-            if (catList != null) {
-                for (String catName : catList) {
-                    Category cat = new Category();
-                    cat.setRestaurantId(restaurantId);
-                    cat.setName(catName);
-                    cat = categoryRepository.save(cat);
-                    categoryMap.put(catName, cat);
+            if (catListRaw != null) {
+                for (Object catObj : catListRaw) {
+                    String catName = catObj instanceof Map ? (String) ((Map) catObj).get("name") : catObj.toString();
+                    if (catName != null && !catName.trim().isEmpty()) {
+                        catName = catName.trim();
+                        Category cat = new Category();
+                        cat.setRestaurantId(restaurantId);
+                        cat.setName(catName);
+                        cat = categoryRepository.save(cat);
+                        categoryMap.put(catName, cat);
+                    }
                 }
             }
 
@@ -268,7 +302,8 @@ public class ActivationService {
                     MenuItem item = new MenuItem();
                     item.setRestaurantId(restaurantId);
                     item.setName((String) itm.get("name"));
-                    item.setShortCode((String) itm.get("shortCode"));
+                    String shortCode = (String) (itm.get("shortCode") != null ? itm.get("shortCode") : itm.get("code"));
+                    item.setShortCode(shortCode);
                     
                     Object priceObj = itm.get("price");
                     BigDecimal price = priceObj != null ? new BigDecimal(priceObj.toString()) : BigDecimal.ZERO;
@@ -287,7 +322,7 @@ public class ActivationService {
                     item.setVeg(isVeg);
                     item.setAvailable(true);
 
-                    String catName = (String) itm.get("categoryName");
+                    String catName = (String) (itm.get("categoryName") != null ? itm.get("categoryName") : itm.get("category"));
                     if (catName == null || catName.trim().isEmpty()) {
                         catName = "General";
                     }

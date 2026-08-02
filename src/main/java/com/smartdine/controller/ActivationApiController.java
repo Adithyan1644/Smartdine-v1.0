@@ -100,6 +100,21 @@ public class ActivationApiController {
         }
     }
 
+    @RequestMapping(value = { "/list-all-restaurants", "/api/activation/list-all-restaurants", "/api/list-all-restaurants" }, method = { RequestMethod.GET, RequestMethod.POST })
+    public ResponseEntity<?> listAllRestaurants() {
+        try {
+            java.util.List<Map<String, Object>> list = jdbcTemplate.queryForList(
+                "SELECT r.id, r.name, r.sync_code, r.biller_sync_code, r.is_active, " +
+                "(SELECT COUNT(*) FROM dining_tables t WHERE t.restaurant_id = r.id OR t.restaurant_id = r.restaurant_id) AS table_count, " +
+                "(SELECT COUNT(*) FROM menu_items m WHERE m.restaurant_id = r.id OR m.restaurant_id = r.restaurant_id) AS menu_item_count " +
+                "FROM restaurants r ORDER BY r.name ASC"
+            );
+            return ResponseEntity.ok(list);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
+    }
+
     @RequestMapping(value = { "/sync/process", "/process" }, method = { RequestMethod.GET, RequestMethod.POST })
     public ResponseEntity<?> processSyncPayload(
             @RequestParam(name = "type", required = false, defaultValue = "ORDER") String eventType,
@@ -274,15 +289,39 @@ public class ActivationApiController {
     @PostMapping("/save-config")
     public ResponseEntity<?> saveConfig(@RequestBody Map<String, Object> request) {
         try {
-            String syncCode = request.get("syncCode") != null ? request.get("syncCode").toString() : "SD-612376";
+            String syncCode = request.get("syncCode") != null ? request.get("syncCode").toString() : "";
             String restId = request.get("restaurantId") != null ? request.get("restaurantId").toString() : null;
-            if (restId == null || restId.isEmpty()) {
-                restId = restaurantRepository.findBySyncCodeAndIsDeletedFalse(syncCode.trim())
-                        .map(r -> r.getRestaurantId().toString())
-                        .orElseGet(() -> systemConfigRepository.findAll().stream()
-                                .findFirst()
-                                .map(c -> c.getRestaurantId().toString())
-                                .orElse("9183522f-e62b-4cdc-b852-cac4b347cbc8"));
+
+            // Resolve real UUID by syncCode or restaurantName via database query
+            if (syncCode != null && !syncCode.trim().isEmpty()) {
+                try {
+                    java.util.List<Map<String, Object>> rList = jdbcTemplate.queryForList(
+                        "SELECT id, biller_sync_code FROM restaurants WHERE biller_sync_code = ? OR sync_code = ? LIMIT 1",
+                        syncCode.trim(), syncCode.trim()
+                    );
+                    if (!rList.isEmpty() && rList.get(0).get("id") != null) {
+                        restId = rList.get(0).get("id").toString();
+                    }
+                } catch (Exception ignored) {}
+            }
+
+            if ((restId == null || restId.isEmpty() || restId.startsWith("rest-")) && request.get("restaurantName") != null) {
+                try {
+                    java.util.List<Map<String, Object>> rList = jdbcTemplate.queryForList(
+                        "SELECT id, biller_sync_code FROM restaurants WHERE LOWER(name) = LOWER(?) LIMIT 1",
+                        request.get("restaurantName").toString().trim()
+                    );
+                    if (!rList.isEmpty() && rList.get(0).get("id") != null) {
+                        restId = rList.get(0).get("id").toString();
+                        if (syncCode == null || syncCode.isEmpty()) {
+                            syncCode = rList.get(0).get("biller_sync_code") != null ? rList.get(0).get("biller_sync_code").toString() : syncCode;
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+
+            if (restId == null || restId.isEmpty() || restId.startsWith("rest-")) {
+                restId = "9183522f-e62b-4cdc-b852-cac4b347cbc8";
             }
 
             String restName = request.get("restaurantName") != null ? request.get("restaurantName").toString() : null;
@@ -469,63 +508,81 @@ public class ActivationApiController {
             gatewayPayload.put("modifierGroups", modifierGroups);
             gatewayPayload.put("waiters", mappedWaiters);
 
-            // Persist tables, categories, and menu items to database
+            // Persist areas, tables, categories, and menu items to database
             try {
                 UUID rId = UUID.fromString(restId);
 
-                if (incomingTables != null && !incomingTables.isEmpty()) {
-                    for (Map<String, Object> t : incomingTables) {
-                        String number = t.get("number") != null ? t.get("number").toString() : (t.get("tableName") != null ? t.get("tableName").toString() : "");
-                        String areaName = t.get("area") != null ? t.get("area").toString() : (t.get("areaName") != null ? t.get("areaName").toString() : "General");
-                        int capacity = t.get("capacity") != null ? Integer.parseInt(t.get("capacity").toString()) : 4;
-                        
-                        var existing = tableRepository.findByRestaurantId(rId).stream()
-                                .filter(table -> table.getTableNumber() != null && table.getTableNumber().equalsIgnoreCase(number))
-                                .findFirst();
-                        if (existing.isEmpty()) {
-                            com.smartdine.coreheart.DiningTable dt = new com.smartdine.coreheart.DiningTable();
-                            dt.setRestaurantId(rId);
-                            dt.setTableNumber(number);
-                            dt.setAreaName(areaName);
-                            dt.setCapacity(capacity);
-                            dt.setStatus(com.smartdine.coreheart.TableStatus.AVAILABLE);
-                            tableRepository.save(dt);
+                // Purge old child records first to prevent Foreign Key dependency locks
+                try { jdbcTemplate.update("DELETE FROM dining_tables WHERE restaurant_id = ?", rId); } catch (Exception ignored) {}
+                try { jdbcTemplate.update("DELETE FROM menu_items WHERE restaurant_id = ?", rId); } catch (Exception ignored) {}
+                try { jdbcTemplate.update("DELETE FROM menu_categories WHERE restaurant_id = ?", rId); } catch (Exception ignored) {}
+                try { jdbcTemplate.update("DELETE FROM areas WHERE restaurant_id = ?", rId); } catch (Exception ignored) {}
+                try { jdbcTemplate.update("DELETE FROM restaurants WHERE biller_sync_code = ? OR sync_code = ? OR id = ? OR restaurant_id = ?", syncCode.trim(), syncCode.trim(), rId, rId); } catch (Exception ignored) {}
+
+                // Ensure parent restaurant record exists in Cloud SQL DB
+                try {
+                    jdbcTemplate.update(
+                        "INSERT INTO restaurants (id, restaurant_id, name, sync_code, biller_sync_code, is_active, is_deleted, is_test) VALUES (?, ?, ?, ?, ?, true, false, false)",
+                        rId, rId, restName, syncCode.trim(), syncCode.trim()
+                    );
+                } catch (Exception restSaveErr) {
+                    System.err.println("Restaurant record save warning in saveConfig: " + restSaveErr.getMessage());
+                }
+
+                java.util.List<Object> incomingAreas = (java.util.List<Object>) request.get("areas");
+                if (incomingAreas != null && !incomingAreas.isEmpty()) {
+                    for (Object aObj : incomingAreas) {
+                        String aName = aObj instanceof Map ? (String) ((Map) aObj).get("name") : aObj.toString();
+                        if (aName != null && !aName.trim().isEmpty()) {
+                            try {
+                                jdbcTemplate.update("INSERT INTO areas (id, name, restaurant_id) VALUES (?, ?, ?)", UUID.randomUUID(), aName.trim(), rId);
+                            } catch (Exception ignored) {}
                         }
                     }
                 }
 
+                if (incomingTables != null && !incomingTables.isEmpty()) {
+                    for (Map<String, Object> t : incomingTables) {
+                        String number = t.get("number") != null ? t.get("number").toString() : (t.get("tableName") != null ? t.get("tableName").toString() : "");
+                        String areaName = t.get("area") != null ? t.get("area").toString() : (t.get("areaName") != null ? t.get("areaName").toString() : "General Area");
+                        int capacity = t.get("capacity") != null ? Integer.parseInt(t.get("capacity").toString()) : 4;
+                        
+                        com.smartdine.coreheart.DiningTable dt = new com.smartdine.coreheart.DiningTable();
+                        dt.setRestaurantId(rId);
+                        dt.setTableNumber(number);
+                        dt.setAreaName(areaName);
+                        dt.setCapacity(capacity);
+                        dt.setStatus(com.smartdine.coreheart.TableStatus.AVAILABLE);
+                        tableRepository.save(dt);
+                    }
+                }
+
                 if (categories != null && !categories.isEmpty()) {
+                    try { jdbcTemplate.update("DELETE FROM menu_categories WHERE restaurant_id = ?", rId); } catch (Exception ignored) {}
                     for (String catName : categories) {
-                        var existingCat = categoryRepository.findByRestaurantId(rId).stream()
-                                .filter(c -> c.getName() != null && c.getName().equalsIgnoreCase(catName))
-                                .findFirst();
-                        if (existingCat.isEmpty()) {
+                        if (catName != null && !catName.trim().isEmpty()) {
                             com.smartdine.coreheart.Category cat = new com.smartdine.coreheart.Category();
                             cat.setRestaurantId(rId);
-                            cat.setName(catName);
+                            cat.setName(catName.trim());
                             categoryRepository.save(cat);
                         }
                     }
                 }
 
                 if (incomingMenuItems != null && !incomingMenuItems.isEmpty()) {
+                    try { jdbcTemplate.update("DELETE FROM menu_items WHERE restaurant_id = ?", rId); } catch (Exception ignored) {}
                     for (Map<String, Object> itemMap : incomingMenuItems) {
                         String name = itemMap.get("name") != null ? itemMap.get("name").toString() : "Item";
-                        var existingItem = menuRepository.findByRestaurantId(rId).stream()
-                                .filter(mi -> mi.getName() != null && mi.getName().equalsIgnoreCase(name))
-                                .findFirst();
-                        if (existingItem.isEmpty()) {
-                            com.smartdine.coreheart.MenuItem mi = new com.smartdine.coreheart.MenuItem();
-                            mi.setRestaurantId(rId);
-                            mi.setName(name);
-                            String category = itemMap.get("categoryName") != null ? itemMap.get("categoryName").toString()
-                                    : (itemMap.get("category") != null ? itemMap.get("category").toString() : "General");
-                            mi.setCategoryName(category);
-                            Object priceObj = itemMap.get("price");
-                            mi.setPrice(priceObj != null ? new java.math.BigDecimal(priceObj.toString()) : java.math.BigDecimal.ZERO);
-                            mi.setAvailable(true);
-                            menuRepository.save(mi);
-                        }
+                        com.smartdine.coreheart.MenuItem mi = new com.smartdine.coreheart.MenuItem();
+                        mi.setRestaurantId(rId);
+                        mi.setName(name);
+                        String category = itemMap.get("categoryName") != null ? itemMap.get("categoryName").toString()
+                                : (itemMap.get("category") != null ? itemMap.get("category").toString() : "General");
+                        mi.setCategoryName(category);
+                        Object priceObj = itemMap.get("price");
+                        mi.setPrice(priceObj != null ? new java.math.BigDecimal(priceObj.toString()) : java.math.BigDecimal.ZERO);
+                        mi.setAvailable(true);
+                        menuRepository.save(mi);
                     }
                 }
             } catch (Exception dbSyncErr) {

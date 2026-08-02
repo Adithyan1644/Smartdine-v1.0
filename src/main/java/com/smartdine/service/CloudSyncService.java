@@ -27,9 +27,25 @@ public class CloudSyncService {
     private final String PROD_CLOUD_URL = "https://smartdine-saas.ew.r.appspot.com/api/sync/orders";
     private final String REPORT_IP_URL = "https://smartdine-saas.ew.r.appspot.com/api/public/provision/report-ip";
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private ActivationService activationService;
+
     public CloudSyncService(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
         this.restTemplate = new RestTemplate();
+    }
+
+    // Runs automatically every 60 seconds to pull menu/table updates from Cloud SQL
+    @Scheduled(fixedDelay = 60000)
+    public void pullCloudConfiguration() {
+        try {
+            List<Map<String, Object>> configList = jdbcTemplate.queryForList("SELECT activation_code FROM system_config WHERE is_activated = true LIMIT 1");
+            if (configList.isEmpty()) return;
+            String syncCode = (String) configList.get(0).get("activation_code");
+            if (syncCode == null || syncCode.trim().isEmpty()) return;
+
+            activationService.activateSystem(syncCode.trim(), "https://smartdine-saas.ew.r.appspot.com/api/public/provision");
+        } catch (Exception ignored) {}
     }
 
     // Runs automatically every 5 seconds inside a background virtual thread

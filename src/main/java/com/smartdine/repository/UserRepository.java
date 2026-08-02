@@ -11,9 +11,16 @@ import java.util.UUID;
 @Repository
 public interface UserRepository extends JpaRepository<AppUser, UUID> {
     
-    // For Admin login via Web/Desktop (Case-insensitive)
-    Optional<AppUser> findByUsername(String username);
-    Optional<AppUser> findByUsernameIgnoreCase(String username);
+    // For Admin login via Web/Desktop (Case-insensitive & Duplicate-safe)
+    Optional<AppUser> findFirstByUsername(String username);
+    Optional<AppUser> findFirstByUsernameIgnoreCase(String username);
+
+    default Optional<AppUser> findByUsername(String username) {
+        return findFirstByUsername(username);
+    }
+    default Optional<AppUser> findByUsernameIgnoreCase(String username) {
+        return findFirstByUsernameIgnoreCase(username);
+    }
 
     // For Staff login via PIN (Multi-tenant safe)
     java.util.List<AppUser> findByPinAndRestaurantId(String pin, UUID restaurantId);

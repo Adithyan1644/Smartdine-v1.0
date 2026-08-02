@@ -208,7 +208,7 @@ public class UiActivationController {
 
                         Scene scene = new Scene(root);
                         stage.setScene(scene);
-                        stage.setTitle("Surabhi SmartDine Login");
+                        stage.setTitle("SmartDine Login");
                         stage.show();
                     } catch (Exception e) {
                         completeBtn.setDisable(false);
