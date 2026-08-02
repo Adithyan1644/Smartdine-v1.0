@@ -9319,71 +9319,133 @@ public class UiDashboardController implements Initializable {
 
     @FXML
     public void handleSyncFromCloud(javafx.event.ActionEvent event) {
+        // Cloud-SQL-First: Read sync code directly from local system_config — NO popup needed.
         com.smartdine.coreheart.SystemConfig config = systemConfigRepository.findAll().stream().findFirst().orElse(null);
-        String defaultCode = (config != null && config.getActivationCode() != null) ? config.getActivationCode().trim() : "";
+        final String activationCode = (config != null && config.getActivationCode() != null)
+                ? config.getActivationCode().trim() : "";
 
-        javafx.scene.control.TextInputDialog dialog = new javafx.scene.control.TextInputDialog(defaultCode);
-        dialog.setTitle("Sync Web Config");
-        dialog.setHeaderText("Sync JavaFX POS with Cloud SQL");
-        dialog.setContentText("Enter your Restaurant Sync Code (e.g. SD-XXXXXX):");
-
-        java.util.Optional<String> result = dialog.showAndWait();
-        if (result.isEmpty() || result.get().trim().isEmpty()) {
+        if (activationCode.isEmpty()) {
+            showToast("⚠️ No Sync Code found. Please activate your POS first.", false);
             return;
         }
-
-        final String activationCode = result.get().trim();
 
         javafx.scene.control.Button sourceBtn = (javafx.scene.control.Button) event.getSource();
         String originalText = sourceBtn.getText();
         sourceBtn.setText("⏳ Syncing...");
         sourceBtn.setDisable(true);
+        sourceBtn.setStyle("-fx-background-color: #64748b; -fx-text-fill: white; -fx-background-radius: 8;");
 
         UUID restaurantId = getActiveRestaurantId();
         CompletableFuture.runAsync(() -> {
             TenantContext.setRestaurantId(restaurantId);
             try {
-                activationService.syncMenuAndTables(activationCode);
-                
+                Map<String, Object> cloudConfig = activationService.activateSystem(
+                        activationCode,
+                        "https://smartdine-saas.ew.r.appspot.com/api/public/provision"
+                );
+
+                // Count what was synced for user feedback
+                @SuppressWarnings("unchecked")
+                java.util.List<?> tables   = (java.util.List<?>) cloudConfig.getOrDefault("tables", java.util.List.of());
+                @SuppressWarnings("unchecked")
+                java.util.List<?> menus    = (java.util.List<?>) cloudConfig.getOrDefault("menuItems", java.util.List.of());
+
+                final String msg = String.format("✅ Updated from Cloud — %d Tables · %d Menu Items",
+                        tables.size(), menus.size());
+
                 Platform.runLater(() -> {
                     sourceBtn.setText(originalText);
                     sourceBtn.setDisable(false);
-                    
-                    // Refresh POS Billing Page Menu Items, Top 8 & Frequently Ordered
+                    sourceBtn.setStyle("");
+
+                    // Refresh all POS views silently
                     populateMenuGrid();
                     populateTop8();
                     populateFrequentlyOrdered();
-
-                    // Refresh tables and order lists
                     loadTablesToUi();
                     loadRunningOrders();
                     loadStockOut();
                     loadPlatformStats();
                     loadPlatformOrders();
                     updateCalculations();
-                    
-                    // Refresh KDS views
-                    if (kdsNativeController != null) {
-                        kdsNativeController.refreshKdsData();
-                    }
-
-                    // Refresh menu grid / combos in Billing View / Web View
                     try {
                         if (menuWebView != null && menuWebView.getEngine() != null) {
                             menuWebView.getEngine().executeScript("refreshUI();");
                         }
                     } catch (Exception ignored) {}
-                    
-                    showAlert("Sync Success", "Menu items and table layouts synchronized successfully!");
+                    if (kdsNativeController != null) {
+                        kdsNativeController.refreshKdsData();
+                    }
+
+                    showToast(msg, true);
                 });
             } catch (Exception e) {
+                final String errMsg = "❌ Sync Failed: " + (e.getMessage() != null
+                        ? e.getMessage().replace("Cloud Gateway rejected activation: ", "")
+                        : "Network error");
                 Platform.runLater(() -> {
                     sourceBtn.setText(originalText);
                     sourceBtn.setDisable(false);
-                    showAlert("Sync Failed", "Error synchronizing configuration: " + e.getMessage());
+                    sourceBtn.setStyle("");
+                    showToast(errMsg, false);
                 });
             } finally {
                 TenantContext.clear();
+            }
+        });
+    }
+
+    /**
+     * Shows a professional auto-dismissing toast notification at the bottom of the dashboard.
+     * @param message  The text to display.
+     * @param success  true = green success, false = red error.
+     */
+    private void showToast(String message, boolean success) {
+        Platform.runLater(() -> {
+            try {
+                javafx.scene.layout.Pane root = (javafx.scene.layout.Pane)
+                        dashboardView.getScene().getRoot();
+
+                javafx.scene.control.Label toast = new javafx.scene.control.Label(message);
+                toast.setStyle(
+                    "-fx-background-color: " + (success ? "#166534" : "#991b1b") + ";" +
+                    "-fx-text-fill: white;" +
+                    "-fx-padding: 12 24 12 24;" +
+                    "-fx-background-radius: 10;" +
+                    "-fx-font-size: 14px;" +
+                    "-fx-font-weight: bold;" +
+                    "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.35), 12, 0, 0, 4);"
+                );
+                toast.setOpacity(0);
+                toast.setWrapText(false);
+
+                root.getChildren().add(toast);
+
+                // Position: bottom-center of the window
+                toast.layoutBoundsProperty().addListener((obs, oldB, newB) -> {
+                    toast.setLayoutX((root.getWidth() - newB.getWidth()) / 2);
+                    toast.setLayoutY(root.getHeight() - newB.getHeight() - 32);
+                });
+
+                // Fade in → hold → fade out → remove
+                javafx.animation.FadeTransition fadeIn = new javafx.animation.FadeTransition(
+                        javafx.util.Duration.millis(300), toast);
+                fadeIn.setFromValue(0);
+                fadeIn.setToValue(1);
+
+                javafx.animation.PauseTransition hold = new javafx.animation.PauseTransition(
+                        javafx.util.Duration.seconds(3));
+
+                javafx.animation.FadeTransition fadeOut = new javafx.animation.FadeTransition(
+                        javafx.util.Duration.millis(400), toast);
+                fadeOut.setFromValue(1);
+                fadeOut.setToValue(0);
+                fadeOut.setOnFinished(e -> root.getChildren().remove(toast));
+
+                new javafx.animation.SequentialTransition(fadeIn, hold, fadeOut).play();
+            } catch (Exception e) {
+                // Fallback: if scene not available, use standard alert
+                showAlert(success ? "Sync Complete" : "Sync Error", message);
             }
         });
     }
