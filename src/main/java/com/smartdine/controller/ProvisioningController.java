@@ -54,6 +54,24 @@ public class ProvisioningController {
         }
 
         if (restaurant == null) {
+            try {
+                java.util.List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                    "SELECT id, restaurant_id, name, is_test FROM restaurants WHERE sync_code = ? OR biller_sync_code = ?",
+                    codeToSearch, codeToSearch
+                );
+                if (!rows.isEmpty()) {
+                    Map<String, Object> rMap = rows.get(0);
+                    restaurant = new Restaurant();
+                    UUID rId = UUID.fromString(rMap.get("id").toString());
+                    restaurant.setId(rId);
+                    restaurant.setRestaurantId(rMap.get("restaurant_id") != null ? UUID.fromString(rMap.get("restaurant_id").toString()) : rId);
+                    restaurant.setName(rMap.get("name") != null ? rMap.get("name").toString() : "Restaurant");
+                    restaurant.setTest(rMap.get("is_test") != null && Boolean.parseBoolean(rMap.get("is_test").toString()));
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (restaurant == null) {
             com.smartdine.config.DataSourceContextHolder.clear();
             throw new NoSuchElementException("Active Sync Code not found on server: " + syncCode);
         }
