@@ -508,81 +508,85 @@ public class ActivationApiController {
             gatewayPayload.put("modifierGroups", modifierGroups);
             gatewayPayload.put("waiters", mappedWaiters);
 
-            // Persist areas, tables, categories, and menu items to database
+            // Persist areas, tables, categories, and menu items to database across PROD and DEV
             try {
                 UUID rId = UUID.fromString(restId);
+                for (String envKey : java.util.List.of("PROD", "DEV")) {
+                    try {
+                        com.smartdine.config.DataSourceContextHolder.set(envKey);
 
-                // Purge old child records first to prevent Foreign Key dependency locks
-                try { jdbcTemplate.update("DELETE FROM dining_tables WHERE restaurant_id = ?", rId); } catch (Exception ignored) {}
-                try { jdbcTemplate.update("DELETE FROM menu_items WHERE restaurant_id = ?", rId); } catch (Exception ignored) {}
-                try { jdbcTemplate.update("DELETE FROM menu_categories WHERE restaurant_id = ?", rId); } catch (Exception ignored) {}
-                try { jdbcTemplate.update("DELETE FROM areas WHERE restaurant_id = ?", rId); } catch (Exception ignored) {}
-                try { jdbcTemplate.update("DELETE FROM restaurants WHERE biller_sync_code = ? OR sync_code = ? OR id = ? OR restaurant_id = ?", syncCode.trim(), syncCode.trim(), rId, rId); } catch (Exception ignored) {}
+                        // 1. Purge old records first to prevent Foreign Key dependency locks
+                        try { jdbcTemplate.update("DELETE FROM dining_tables WHERE restaurant_id = ?", rId); } catch (Exception ignored) {}
+                        try { jdbcTemplate.update("DELETE FROM menu_items WHERE restaurant_id = ?", rId); } catch (Exception ignored) {}
+                        try { jdbcTemplate.update("DELETE FROM menu_categories WHERE restaurant_id = ?", rId); } catch (Exception ignored) {}
+                        try { jdbcTemplate.update("DELETE FROM areas WHERE restaurant_id = ?", rId); } catch (Exception ignored) {}
+                        try { jdbcTemplate.update("DELETE FROM restaurants WHERE biller_sync_code = ? OR sync_code = ? OR id = ? OR restaurant_id = ?", syncCode.trim(), syncCode.trim(), rId, rId); } catch (Exception ignored) {}
 
-                // Ensure parent restaurant record exists in Cloud SQL DB
-                try {
-                    jdbcTemplate.update(
-                        "INSERT INTO restaurants (id, restaurant_id, name, sync_code, biller_sync_code, is_active, is_deleted, is_test) VALUES (?, ?, ?, ?, ?, true, false, false)",
-                        rId, rId, restName, syncCode.trim(), syncCode.trim()
-                    );
-                } catch (Exception restSaveErr) {
-                    System.err.println("Restaurant record save warning in saveConfig: " + restSaveErr.getMessage());
-                }
-
-                java.util.List<Object> incomingAreas = (java.util.List<Object>) request.get("areas");
-                if (incomingAreas != null && !incomingAreas.isEmpty()) {
-                    for (Object aObj : incomingAreas) {
-                        String aName = aObj instanceof Map ? (String) ((Map) aObj).get("name") : aObj.toString();
-                        if (aName != null && !aName.trim().isEmpty()) {
-                            try {
-                                jdbcTemplate.update("INSERT INTO areas (id, name, restaurant_id) VALUES (?, ?, ?)", UUID.randomUUID(), aName.trim(), rId);
-                            } catch (Exception ignored) {}
+                        // 2. Ensure parent restaurant record exists in Cloud SQL DB
+                        try {
+                            jdbcTemplate.update(
+                                "INSERT INTO restaurants (id, restaurant_id, name, sync_code, biller_sync_code, is_active, is_deleted, is_test) VALUES (?, ?, ?, ?, ?, true, false, false)",
+                                rId, rId, restName, syncCode.trim(), syncCode.trim()
+                            );
+                        } catch (Exception restSaveErr) {
+                            System.err.println("Restaurant record save warning in saveConfig (" + envKey + "): " + restSaveErr.getMessage());
                         }
-                    }
-                }
 
-                if (incomingTables != null && !incomingTables.isEmpty()) {
-                    for (Map<String, Object> t : incomingTables) {
-                        String number = t.get("number") != null ? t.get("number").toString() : (t.get("tableName") != null ? t.get("tableName").toString() : "");
-                        String areaName = t.get("area") != null ? t.get("area").toString() : (t.get("areaName") != null ? t.get("areaName").toString() : "General Area");
-                        int capacity = t.get("capacity") != null ? Integer.parseInt(t.get("capacity").toString()) : 4;
-                        
-                        com.smartdine.coreheart.DiningTable dt = new com.smartdine.coreheart.DiningTable();
-                        dt.setRestaurantId(rId);
-                        dt.setTableNumber(number);
-                        dt.setAreaName(areaName);
-                        dt.setCapacity(capacity);
-                        dt.setStatus(com.smartdine.coreheart.TableStatus.AVAILABLE);
-                        tableRepository.save(dt);
-                    }
-                }
-
-                if (categories != null && !categories.isEmpty()) {
-                    try { jdbcTemplate.update("DELETE FROM menu_categories WHERE restaurant_id = ?", rId); } catch (Exception ignored) {}
-                    for (String catName : categories) {
-                        if (catName != null && !catName.trim().isEmpty()) {
-                            com.smartdine.coreheart.Category cat = new com.smartdine.coreheart.Category();
-                            cat.setRestaurantId(rId);
-                            cat.setName(catName.trim());
-                            categoryRepository.save(cat);
+                        // 3. Insert Areas
+                        java.util.List<Object> incomingAreas = (java.util.List<Object>) request.get("areas");
+                        if (incomingAreas != null && !incomingAreas.isEmpty()) {
+                            for (Object aObj : incomingAreas) {
+                                String aName = aObj instanceof Map ? (String) ((Map) aObj).get("name") : aObj.toString();
+                                if (aName != null && !aName.trim().isEmpty()) {
+                                    try {
+                                        jdbcTemplate.update("INSERT INTO areas (id, name, restaurant_id) VALUES (?, ?, ?)", UUID.randomUUID(), aName.trim(), rId);
+                                    } catch (Exception ignored) {}
+                                }
+                            }
                         }
-                    }
-                }
 
-                if (incomingMenuItems != null && !incomingMenuItems.isEmpty()) {
-                    try { jdbcTemplate.update("DELETE FROM menu_items WHERE restaurant_id = ?", rId); } catch (Exception ignored) {}
-                    for (Map<String, Object> itemMap : incomingMenuItems) {
-                        String name = itemMap.get("name") != null ? itemMap.get("name").toString() : "Item";
-                        com.smartdine.coreheart.MenuItem mi = new com.smartdine.coreheart.MenuItem();
-                        mi.setRestaurantId(rId);
-                        mi.setName(name);
-                        String category = itemMap.get("categoryName") != null ? itemMap.get("categoryName").toString()
-                                : (itemMap.get("category") != null ? itemMap.get("category").toString() : "General");
-                        mi.setCategoryName(category);
-                        Object priceObj = itemMap.get("price");
-                        mi.setPrice(priceObj != null ? new java.math.BigDecimal(priceObj.toString()) : java.math.BigDecimal.ZERO);
-                        mi.setAvailable(true);
-                        menuRepository.save(mi);
+                        // 4. Insert Dining Tables
+                        if (incomingTables != null && !incomingTables.isEmpty()) {
+                            for (Map<String, Object> t : incomingTables) {
+                                String number = t.get("number") != null ? t.get("number").toString() : (t.get("tableName") != null ? t.get("tableName").toString() : "");
+                                String areaName = t.get("area") != null ? t.get("area").toString() : (t.get("areaName") != null ? t.get("areaName").toString() : "General Area");
+                                int capacity = t.get("capacity") != null ? Integer.parseInt(t.get("capacity").toString()) : 4;
+                                try {
+                                    jdbcTemplate.update("INSERT INTO dining_tables (id, restaurant_id, table_number, area_name, capacity, status) VALUES (?, ?, ?, ?, ?, 'AVAILABLE')",
+                                            UUID.randomUUID(), rId, number, areaName, capacity);
+                                } catch (Exception ignored) {}
+                            }
+                        }
+
+                        // 5. Insert Categories
+                        if (categories != null && !categories.isEmpty()) {
+                            for (String catName : categories) {
+                                if (catName != null && !catName.trim().isEmpty()) {
+                                    try {
+                                        jdbcTemplate.update("INSERT INTO menu_categories (id, restaurant_id, name) VALUES (?, ?, ?)", UUID.randomUUID(), rId, catName.trim());
+                                    } catch (Exception ignored) {}
+                                }
+                            }
+                        }
+
+                        // 6. Insert Menu Items
+                        if (incomingMenuItems != null && !incomingMenuItems.isEmpty()) {
+                            for (Map<String, Object> itemMap : incomingMenuItems) {
+                                String name = itemMap.get("name") != null ? itemMap.get("name").toString() : "Item";
+                                String category = itemMap.get("categoryName") != null ? itemMap.get("categoryName").toString()
+                                        : (itemMap.get("category") != null ? itemMap.get("category").toString() : "General");
+                                Object priceObj = itemMap.get("price");
+                                java.math.BigDecimal price = priceObj != null ? new java.math.BigDecimal(priceObj.toString()) : java.math.BigDecimal.ZERO;
+                                try {
+                                    jdbcTemplate.update("INSERT INTO menu_items (id, restaurant_id, name, category_name, price, is_available) VALUES (?, ?, ?, ?, ?, true)",
+                                            UUID.randomUUID(), rId, name, category, price);
+                                } catch (Exception ignored) {}
+                            }
+                        }
+                    } catch (Exception envErr) {
+                        System.err.println("Database sync error for environment " + envKey + ": " + envErr.getMessage());
+                    } finally {
+                        com.smartdine.config.DataSourceContextHolder.clear();
                     }
                 }
             } catch (Exception dbSyncErr) {
