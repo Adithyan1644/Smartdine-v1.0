@@ -9339,7 +9339,7 @@ public class UiDashboardController implements Initializable {
         CompletableFuture.runAsync(() -> {
             TenantContext.setRestaurantId(restaurantId);
             try {
-                Map<String, Object> cloudConfig = activationService.activateSystem(
+                java.util.Map<String, Object> cloudConfig = activationService.activateSystem(
                         activationCode,
                         "https://smartdine-saas.ew.r.appspot.com/api/public/provision"
                 );
