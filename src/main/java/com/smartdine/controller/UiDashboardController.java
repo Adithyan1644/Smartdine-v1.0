@@ -9339,16 +9339,29 @@ public class UiDashboardController implements Initializable {
         CompletableFuture.runAsync(() -> {
             TenantContext.setRestaurantId(restaurantId);
             try {
-                java.util.Map<String, Object> cloudConfig = activationService.activateSystem(
-                        activationCode,
-                        "https://smartdine-saas.ew.r.appspot.com/api/public/provision"
+                // Fetch live config from Cloud SQL without doing a full reset.
+                // activateSystem() deletes admin users — use syncCloudConfiguration() instead
+                // which only updates tables, menus, categories, and waiters.
+                org.springframework.web.client.RestTemplate rt = new org.springframework.web.client.RestTemplate();
+                @SuppressWarnings("unchecked")
+                java.util.Map<String, Object> cloudConfig = rt.getForObject(
+                        "https://smartdine-saas.ew.r.appspot.com/api/public/provision/activate?code="
+                                + java.net.URLEncoder.encode(activationCode, java.nio.charset.StandardCharsets.UTF_8),
+                        java.util.Map.class
                 );
 
-                // Count what was synced for user feedback
+                if (cloudConfig == null || cloudConfig.containsKey("error")) {
+                    String errDetail = cloudConfig != null ? cloudConfig.get("error").toString() : "No response";
+                    throw new RuntimeException(errDetail);
+                }
+
+                // Sync only operational data — admin users are NEVER touched
+                activationService.syncCloudConfiguration(cloudConfig);
+
                 @SuppressWarnings("unchecked")
-                java.util.List<?> tables   = (java.util.List<?>) cloudConfig.getOrDefault("tables", java.util.List.of());
+                java.util.List<?> tables = (java.util.List<?>) cloudConfig.getOrDefault("tables", java.util.List.of());
                 @SuppressWarnings("unchecked")
-                java.util.List<?> menus    = (java.util.List<?>) cloudConfig.getOrDefault("menuItems", java.util.List.of());
+                java.util.List<?> menus  = (java.util.List<?>) cloudConfig.getOrDefault("menuItems", java.util.List.of());
 
                 final String msg = String.format("✅ Updated from Cloud — %d Tables · %d Menu Items",
                         tables.size(), menus.size());

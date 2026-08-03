@@ -286,6 +286,59 @@ public class ActivationApiController {
         }
     }
 
+    /**
+     * Recovery endpoint: re-creates the ADMIN user if it was accidentally deleted by a broken sync.
+     * Safe to call at any time — only creates if missing, never overwrites existing admin.
+     * Usage: GET http://localhost:8080/api/activation/recover-admin?username=admin&password=admin123&pin=1234
+     */
+    @GetMapping("/recover-admin")
+    public ResponseEntity<?> recoverAdmin(
+            @RequestParam(defaultValue = "admin") String username,
+            @RequestParam(defaultValue = "admin123") String password,
+            @RequestParam(defaultValue = "1234") String pin) {
+        try {
+            com.smartdine.coreheart.SystemConfig config = systemConfigRepository.findAll().stream()
+                    .findFirst().orElse(null);
+            if (config == null) {
+                return ResponseEntity.badRequest().body(Map.of("success", false,
+                        "error", "System not activated yet. Please use 'Sync New Biller' first."));
+            }
+
+            UUID restaurantId = config.getRestaurantId();
+
+            // Check if admin already exists — never overwrite
+            boolean adminExists = userRepository.findAll().stream()
+                    .anyMatch(u -> restaurantId.equals(u.getRestaurantId())
+                            && u.getRole() == com.smartdine.coreheart.UserRole.ADMIN
+                            && u.isActive());
+
+            if (adminExists) {
+                return ResponseEntity.ok(Map.of("success", true,
+                        "message", "Admin user already exists — no recovery needed.",
+                        "restaurantId", restaurantId.toString(),
+                        "hint", "Try logging in with your original credentials."));
+            }
+
+            // Re-create admin user
+            com.smartdine.coreheart.TenantContext.setRestaurantId(restaurantId);
+            try {
+                activationService.setupManagerAccount(username.trim(), password.trim(), pin.trim());
+            } finally {
+                com.smartdine.coreheart.TenantContext.clear();
+            }
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "✅ Admin user recovered successfully!",
+                    "username", username.trim(),
+                    "password", password.trim(),
+                    "restaurantId", restaurantId.toString(),
+                    "hint", "Login with username='" + username.trim() + "' and password='" + password.trim() + "'"));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(Map.of("success", false, "error", e.getMessage()));
+        }
+    }
+
     @PostMapping("/save-config")
     public ResponseEntity<?> saveConfig(@RequestBody Map<String, Object> request) {
         try {

@@ -475,13 +475,37 @@ public class ActivationService {
             }
 
             // 2. Sync Categories
-            List<String> catList = (List<String>) config.get("categories");
+            // Cloud API returns either List<String> or List<Map> for categories.
+            // Also derive categories from menuItems[].category if the categories list is missing.
+            List<Object> catListRaw = (List<Object>) config.get("categories");
+            if (catListRaw == null) catListRaw = (List<Object>) config.get("menuCategories");
             Map<String, Category> categoryMap = new HashMap<>();
-            if (catList != null) {
+            
+            // Build set of category names from categories list
+            Set<String> catNames = new java.util.LinkedHashSet<>();
+            if (catListRaw != null) {
+                for (Object catObj : catListRaw) {
+                    String catName = catObj instanceof Map
+                        ? (String) ((Map<?, ?>) catObj).get("name")
+                        : catObj != null ? catObj.toString() : null;
+                    if (catName != null && !catName.trim().isEmpty()) catNames.add(catName.trim());
+                }
+            }
+            // Also derive categories from menuItems to avoid orphan items
+            List<Map<String, Object>> itemsPreview = (List<Map<String, Object>>) config.get("menuItems");
+            if (itemsPreview != null) {
+                for (Map<String, Object> itm : itemsPreview) {
+                    String cn = itm.get("categoryName") != null ? itm.get("categoryName").toString()
+                              : itm.get("category") != null ? itm.get("category").toString() : null;
+                    if (cn != null && !cn.trim().isEmpty()) catNames.add(cn.trim());
+                }
+            }
+            
+            if (!catNames.isEmpty()) {
                 List<Category> existingCats = categoryRepository.findByRestaurantId(restaurantId);
-                for (String catName : catList) {
+                for (String catName : catNames) {
                     Category cat = existingCats.stream()
-                        .filter(c -> c.getName().equals(catName))
+                        .filter(c -> c.getName() != null && c.getName().equalsIgnoreCase(catName))
                         .findFirst()
                         .orElse(null);
                     if (cat == null) {
@@ -490,7 +514,7 @@ public class ActivationService {
                         cat.setName(catName);
                         cat = categoryRepository.save(cat);
                     }
-                    categoryMap.put(catName, cat);
+                    categoryMap.put(catName.toLowerCase(), cat);
                 }
             }
 
@@ -538,8 +562,20 @@ public class ActivationService {
                         }
                     }
                     
-                    String catName = (String) itm.get("categoryName");
-                    Category category = categoryMap.get(catName);
+                    // Cloud API returns "category" or "categoryName" — resolve both
+                    String catName = itm.get("categoryName") != null ? itm.get("categoryName").toString().trim()
+                            : itm.get("category") != null ? itm.get("category").toString().trim() : null;
+                    if (catName == null || catName.isEmpty()) catName = "General";
+                    // categoryMap is keyed by lowercase for case-insensitive lookup
+                    Category category = categoryMap.get(catName.toLowerCase());
+                    if (category == null) {
+                        // Category wasn't in the list — create it on the fly
+                        category = new Category();
+                        category.setRestaurantId(restaurantId);
+                        category.setName(catName);
+                        category = categoryRepository.save(category);
+                        categoryMap.put(catName.toLowerCase(), category);
+                    }
                     item.setCategory(category);
                     item.setCategoryName(catName);
                     item.setDeleted(false);
