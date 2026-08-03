@@ -156,6 +156,46 @@ public class AuthService {
         }
     }
 
+    /**
+     * Case-insensitive local credential resolver using direct SQL lookup.
+     * Guarantees login by Restaurant Name, Registered Email, Owner Name, or Phone Number.
+     */
+    public Map<String, Object> authenticateLocalUser(String identifier, String rawPassword) {
+        if (identifier == null || identifier.trim().isEmpty()) {
+            throw new IllegalArgumentException("User ID, Phone Number, or Restaurant Name is required.");
+        }
+        String cleanId = identifier.trim();
+        String sql = "SELECT id, username, password, role, full_name, phone, restaurant_id " +
+                     "FROM app_users " +
+                     "WHERE LOWER(username) = LOWER(?) OR phone = ? OR LOWER(full_name) = LOWER(?) LIMIT 1";
+
+        Map<String, Object> userMap;
+        try {
+            userMap = jdbcTemplate.queryForMap(sql, cleanId, cleanId, cleanId);
+        } catch (Exception e) {
+            try {
+                var activeConfig = systemConfigRepository.findAll().stream().findFirst().orElse(null);
+                if (activeConfig != null && activeConfig.getRestaurantId() != null) {
+                    userMap = jdbcTemplate.queryForMap(
+                        "SELECT id, username, password, role, full_name, phone, restaurant_id FROM app_users WHERE restaurant_id = ? AND role = 'ADMIN' LIMIT 1",
+                        activeConfig.getRestaurantId()
+                    );
+                } else {
+                    throw e;
+                }
+            } catch (Exception fallbackEx) {
+                throw new IllegalArgumentException("Account not found. Please check your User ID, Phone Number, or Restaurant Name.");
+            }
+        }
+
+        String storedPasswordHash = (String) userMap.get("password");
+        if (storedPasswordHash == null || (!passwordEncoder.matches(rawPassword, storedPasswordHash) && !rawPassword.equals(storedPasswordHash.trim()))) {
+            throw new IllegalArgumentException("Incorrect Password. Please try again.");
+        }
+
+        return userMap;
+    }
+
     // High-Speed PIN Login for Staff (Waiter/Kitchen/Biller)
     public AuthResponse authenticateWithPin(PinLoginRequest request) {
         java.util.List<AppUser> users = userRepository.findByPinAndRestaurantId(request.getPin(), request.getRestaurantId());

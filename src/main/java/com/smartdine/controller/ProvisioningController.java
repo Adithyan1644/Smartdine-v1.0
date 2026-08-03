@@ -117,6 +117,22 @@ public class ProvisioningController {
         dto.setRestaurantId(restId);
         dto.setRestaurantName(restaurant.getName());
         dto.setTest(restaurant.isTest());
+        dto.setSyncCode(restaurant.getBillerSyncCode() != null ? restaurant.getBillerSyncCode() : restaurant.getSyncCode());
+
+        // Extract Administrator Credentials for Multi-Alias Seeding
+        try {
+            List<Map<String, Object>> adminRows = safeQueryForList(
+                "SELECT username, password, phone, full_name FROM app_users WHERE restaurant_id = ? AND role = 'ADMIN' LIMIT 1",
+                id1, id2
+            );
+            if (!adminRows.isEmpty()) {
+                Map<String, Object> admin = adminRows.get(0);
+                dto.setAdminUsername(admin.get("username") != null ? admin.get("username").toString() : null);
+                dto.setAdminPasswordHash(admin.get("password") != null ? admin.get("password").toString() : null);
+                dto.setAdminPhone(admin.get("phone") != null ? admin.get("phone").toString() : null);
+                dto.setAdminFullName(admin.get("full_name") != null ? admin.get("full_name").toString() : null);
+            }
+        } catch (Exception ignored) {}
 
         // Extract metadata cleanly using safe, dual-aliased JDBC queries for 100% compatibility across consumers
         dto.setAreas(safeQueryForList("SELECT id, name FROM areas WHERE restaurant_id = ?", id1, id2));

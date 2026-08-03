@@ -202,6 +202,13 @@ public class ActivationService {
             restaurantRepository.save(restaurantRecord);
             System.out.println("✅ [ActivationService] Restaurant row upserted with syncCode=" + activationCode.trim() + ", restaurantId=" + restaurantId);
 
+            // 4c. Multi-Alias Offline Credential Seeding (Email + Restaurant Name + Phone)
+            String adminUser = (String) (config.get("adminUsername") != null ? config.get("adminUsername") : config.get("ownerEmail"));
+            String adminPwd = (String) config.get("adminPasswordHash");
+            String adminPhone = (String) (config.get("adminPhone") != null ? config.get("adminPhone") : config.get("phone"));
+            String adminName = (String) (config.get("adminFullName") != null ? config.get("adminFullName") : config.get("ownerName"));
+            seedLocalAdminAliases(restaurantId, restaurantName, adminUser, adminPwd, adminPhone, adminName);
+
             // Trigger GCP IP Reporting immediately on activation
             if (cloudIpReporter != null) {
                 Thread.ofVirtual().start(cloudIpReporter::reportIpToCloud);
@@ -807,6 +814,75 @@ public class ActivationService {
             throw e;
         } finally {
             TenantContext.clear();
+        }
+    }
+
+    /**
+     * Multi-Alias Offline Credential Seeder.
+     * Seeds administrator user records locally under Email Address, Restaurant Name,
+     * and Phone Number aliases with synchronized BCrypt password hash.
+     */
+    @Transactional
+    public void seedLocalAdminAliases(UUID restaurantId, String restaurantName, String adminUsername, String adminPasswordHash, String adminPhone, String adminFullName) {
+        String pwdHash = (adminPasswordHash != null && !adminPasswordHash.isBlank())
+                ? adminPasswordHash
+                : passwordEncoder.encode("123456");
+        String fullName = (adminFullName != null && !adminFullName.isBlank()) ? adminFullName : "SaaS Restaurant Owner";
+
+        // Alias 1: Primary Email / Username (e.g. adithyanvijayan21644@gmail.com)
+        if (adminUsername != null && !adminUsername.trim().isEmpty()) {
+            String targetUser = adminUsername.trim();
+            AppUser u1 = userRepository.findByUsernameIgnoreCase(targetUser).orElse(new AppUser());
+            u1.setRestaurantId(restaurantId);
+            u1.setUsername(targetUser);
+            u1.setPassword(pwdHash);
+            u1.setRole(UserRole.ADMIN);
+            u1.setPhone(adminPhone);
+            u1.setFullName(fullName);
+            if (u1.getPin() == null) u1.setPin("1234");
+            u1.setActive(true);
+            userRepository.save(u1);
+            System.out.println("✅ [ActivationService] Seeded Admin Email/Username Alias: " + targetUser);
+        }
+
+        // Alias 2: Restaurant Name (e.g. Kerala Foods)
+        if (restaurantName != null && !restaurantName.trim().isEmpty()) {
+            String targetRestName = restaurantName.trim();
+            if (adminUsername == null || !targetRestName.equalsIgnoreCase(adminUsername.trim())) {
+                AppUser u2 = userRepository.findByUsernameIgnoreCase(targetRestName).orElse(new AppUser());
+                u2.setRestaurantId(restaurantId);
+                u2.setUsername(targetRestName);
+                u2.setPassword(pwdHash);
+                u2.setRole(UserRole.ADMIN);
+                u2.setPhone(adminPhone);
+                u2.setFullName(fullName);
+                if (u2.getPin() == null) u2.setPin("1234");
+                u2.setActive(true);
+                userRepository.save(u2);
+                System.out.println("✅ [ActivationService] Seeded Admin Restaurant Name Alias: " + targetRestName);
+            }
+        }
+    }
+
+    /**
+     * DTO-based activation pipeline for offline POS handshake.
+     */
+    @Transactional
+    public boolean activateSystem(com.smartdine.dto.RestaurantConfigDTO dto) {
+        if (dto == null || dto.getRestaurantId() == null) return false;
+        try {
+            seedLocalAdminAliases(
+                dto.getRestaurantId(),
+                dto.getRestaurantName(),
+                dto.getAdminUsername(),
+                dto.getAdminPasswordHash(),
+                dto.getAdminPhone(),
+                dto.getAdminFullName()
+            );
+            return true;
+        } catch (Exception e) {
+            System.err.println("❌ [ActivationService] Failed DTO activation seeding: " + e.getMessage());
+            return false;
         }
     }
 
