@@ -438,50 +438,60 @@ public class ActivationService {
         TenantContext.setRestaurantId(restaurantId);
 
         try {
-            // 1. Sync Tables
+            // ─────────────────────────────────────────────────────────────────────
+            // 1. SYNC TABLES — full replace: delete missing, upsert existing
+            // ─────────────────────────────────────────────────────────────────────
             List<Map<String, Object>> tableList = (List<Map<String, Object>>) config.get("tables");
             if (tableList != null) {
                 List<DiningTable> existingTables = tableRepository.findByRestaurantId(restaurantId);
                 Set<String> incomingTableNums = new HashSet<>();
-                
+
                 for (Map<String, Object> tbl : tableList) {
-                    String tableNumber = (String) tbl.get("tableNumber");
+                    // Accept both "tableNumber" (POS format) and "number" (Web Admin format)
+                    String tableNumber = tbl.get("tableNumber") != null ? tbl.get("tableNumber").toString()
+                                      : tbl.get("number") != null ? tbl.get("number").toString() : null;
+                    if (tableNumber == null || tableNumber.isBlank()) continue;
+                    if (!tableNumber.startsWith("T-") && !tableNumber.startsWith("#"))
+                        tableNumber = "T-" + tableNumber;
                     incomingTableNums.add(tableNumber);
-                    
+
+                    // Accept both "areaName" (POS) and "area" (Web Admin)
+                    String areaName = tbl.get("areaName") != null ? tbl.get("areaName").toString()
+                                    : tbl.get("area") != null ? tbl.get("area").toString() : "General Area";
+
+                    final String finalNum = tableNumber;
                     DiningTable table = existingTables.stream()
-                        .filter(t -> t.getTableNumber().equals(tableNumber))
-                        .findFirst()
-                        .orElse(null);
-                        
+                        .filter(t -> finalNum.equalsIgnoreCase(t.getTableNumber()))
+                        .findFirst().orElse(null);
+
                     if (table == null) {
                         table = new DiningTable();
                         table.setRestaurantId(restaurantId);
                         table.setTableNumber(tableNumber);
                         table.setStatus(TableStatus.AVAILABLE);
                     }
-                    table.setCapacity((Integer) tbl.get("capacity"));
-                    table.setAreaName((String) tbl.get("areaName"));
+                    Object capObj = tbl.get("capacity");
+                    table.setCapacity(capObj != null ? Integer.parseInt(capObj.toString()) : 4);
+                    table.setAreaName(areaName.trim());
                     tableRepository.save(table);
                 }
-                
-                // Delete tables that are no longer in the web dashboard
+
+                // Hard-delete tables removed from web admin
                 for (DiningTable ext : existingTables) {
                     if (!incomingTableNums.contains(ext.getTableNumber())) {
-                        try {
-                            tableRepository.delete(ext);
-                        } catch (Exception ignored) {}
+                        try { tableRepository.delete(ext); } catch (Exception ignored) {}
                     }
                 }
             }
 
-            // 2. Sync Categories
-            // Cloud API returns either List<String> or List<Map> for categories.
-            // Also derive categories from menuItems[].category if the categories list is missing.
+            // ─────────────────────────────────────────────────────────────────────
+            // 2. SYNC CATEGORIES — full replace (remove deleted, add new)
+            // ─────────────────────────────────────────────────────────────────────
             List<Object> catListRaw = (List<Object>) config.get("categories");
             if (catListRaw == null) catListRaw = (List<Object>) config.get("menuCategories");
             Map<String, Category> categoryMap = new HashMap<>();
-            
-            // Build set of category names from categories list
+
+            // Build the authoritative set of incoming category names
             Set<String> catNames = new java.util.LinkedHashSet<>();
             if (catListRaw != null) {
                 for (Object catObj : catListRaw) {
@@ -491,7 +501,7 @@ public class ActivationService {
                     if (catName != null && !catName.trim().isEmpty()) catNames.add(catName.trim());
                 }
             }
-            // Also derive categories from menuItems to avoid orphan items
+            // Also derive from menuItems so orphan items never happen
             List<Map<String, Object>> itemsPreview = (List<Map<String, Object>>) config.get("menuItems");
             if (itemsPreview != null) {
                 for (Map<String, Object> itm : itemsPreview) {
@@ -500,53 +510,68 @@ public class ActivationService {
                     if (cn != null && !cn.trim().isEmpty()) catNames.add(cn.trim());
                 }
             }
-            
-            if (!catNames.isEmpty()) {
-                List<Category> existingCats = categoryRepository.findByRestaurantId(restaurantId);
-                for (String catName : catNames) {
-                    Category cat = existingCats.stream()
-                        .filter(c -> c.getName() != null && c.getName().equalsIgnoreCase(catName))
-                        .findFirst()
-                        .orElse(null);
-                    if (cat == null) {
-                        cat = new Category();
-                        cat.setRestaurantId(restaurantId);
-                        cat.setName(catName);
-                        cat = categoryRepository.save(cat);
-                    }
-                    categoryMap.put(catName.toLowerCase(), cat);
+
+            List<Category> existingCats = categoryRepository.findByRestaurantId(restaurantId);
+
+            // Upsert incoming categories
+            for (String catName : catNames) {
+                Category cat = existingCats.stream()
+                    .filter(c -> c.getName() != null && c.getName().equalsIgnoreCase(catName))
+                    .findFirst().orElse(null);
+                if (cat == null) {
+                    cat = new Category();
+                    cat.setRestaurantId(restaurantId);
+                    cat.setName(catName);
+                    cat = categoryRepository.save(cat);
+                }
+                categoryMap.put(catName.toLowerCase(), cat);
+            }
+
+            // Delete categories that were removed in web admin
+            Set<String> lowerCatNames = catNames.stream()
+                .map(String::toLowerCase).collect(java.util.stream.Collectors.toSet());
+            for (Category existingCat : existingCats) {
+                if (existingCat.getName() != null
+                        && !lowerCatNames.contains(existingCat.getName().toLowerCase())) {
+                    try { categoryRepository.delete(existingCat); } catch (Exception ignored) {}
                 }
             }
 
-            // 3. Sync Menu Items
+            // ─────────────────────────────────────────────────────────────────────
+            // 3. SYNC MENU ITEMS — full replace via incoming payload
+            // ─────────────────────────────────────────────────────────────────────
             List<Map<String, Object>> itemsList = (List<Map<String, Object>>) config.get("menuItems");
-            if (itemsList != null && !itemsList.isEmpty()) {
-                List<MenuItem> allDbItems = menuRepository.findAll();
+            // Treat an explicitly empty list as "delete all" (user cleared the menu)
+            if (itemsList != null) {
+                List<MenuItem> allDbItems = menuRepository.findByRestaurantId(restaurantId);
                 Set<String> incomingCodes = new HashSet<>();
                 Set<String> incomingNames = new HashSet<>();
-                
+
                 for (Map<String, Object> itm : itemsList) {
                     String name = itm.get("name") != null ? itm.get("name").toString().trim() : "";
-                    String code = (String) itm.get("shortCode");
-                    if (code == null || code.trim().isEmpty()) {
-                        code = (name != null && name.length() >= 3) ? name.substring(0, 3).toUpperCase() : "ITM" + (int)(Math.random() * 1000);
+                    if (name.isEmpty()) continue;
+
+                    String code = itm.get("shortCode") != null ? itm.get("shortCode").toString().trim()
+                                : itm.get("code") != null ? itm.get("code").toString().trim() : "";
+                    if (code.isEmpty()) {
+                        code = (name.length() >= 3 ? name.substring(0, 3) : name).toUpperCase()
+                                .replaceAll("[^A-Z0-9]", "");
+                        if (code.isEmpty()) code = "ITM";
                     }
-                    final String finalCode = code.trim().toUpperCase();
+                    final String finalCode = code.toUpperCase();
                     final String finalName = name;
 
-                    if (!finalCode.isEmpty()) incomingCodes.add(finalCode);
-                    if (!finalName.isEmpty()) incomingNames.add(finalName.toLowerCase());
-                    
+                    incomingCodes.add(finalCode);
+                    incomingNames.add(finalName.toLowerCase());
+
                     MenuItem item = allDbItems.stream()
-                        .filter(i -> (i.getShortCode() != null && i.getShortCode().trim().equalsIgnoreCase(finalCode)) ||
-                                     (i.getName() != null && i.getName().trim().equalsIgnoreCase(finalName)))
-                        .findFirst()
-                        .orElse(null);
-                        
+                        .filter(i -> (i.getShortCode() != null && i.getShortCode().trim().equalsIgnoreCase(finalCode))
+                                  || (i.getName() != null && i.getName().trim().equalsIgnoreCase(finalName)))
+                        .findFirst().orElse(null);
+
                     if (item == null) {
                         item = new MenuItem();
                         item.setRestaurantId(restaurantId);
-                        item.setShortCode(finalCode);
                         item.setAvailable(true);
                     }
                     item.setName(finalName);
@@ -554,22 +579,19 @@ public class ActivationService {
                     if (itm.get("price") != null) {
                         item.setPrice(new BigDecimal(itm.get("price").toString()));
                     }
+                    // Veg flag: resolve from boolean or "Veg"/"Non-Veg" type string
                     if (itm.get("veg") != null) {
-                        if (itm.get("veg") instanceof Boolean) {
-                            item.setVeg((Boolean) itm.get("veg"));
-                        } else {
-                            item.setVeg(Boolean.parseBoolean(itm.get("veg").toString()));
-                        }
+                        item.setVeg(itm.get("veg") instanceof Boolean ? (Boolean) itm.get("veg")
+                                : Boolean.parseBoolean(itm.get("veg").toString()));
+                    } else if (itm.get("type") != null) {
+                        item.setVeg(!"Non-Veg".equalsIgnoreCase(itm.get("type").toString()));
                     }
-                    
-                    // Cloud API returns "category" or "categoryName" — resolve both
+                    // Category: resolve both field names
                     String catName = itm.get("categoryName") != null ? itm.get("categoryName").toString().trim()
-                            : itm.get("category") != null ? itm.get("category").toString().trim() : null;
-                    if (catName == null || catName.isEmpty()) catName = "General";
-                    // categoryMap is keyed by lowercase for case-insensitive lookup
+                            : itm.get("category") != null ? itm.get("category").toString().trim() : "General";
+                    if (catName.isEmpty()) catName = "General";
                     Category category = categoryMap.get(catName.toLowerCase());
                     if (category == null) {
-                        // Category wasn't in the list — create it on the fly
                         category = new Category();
                         category.setRestaurantId(restaurantId);
                         category.setName(catName);
@@ -579,20 +601,19 @@ public class ActivationService {
                     item.setCategory(category);
                     item.setCategoryName(catName);
                     item.setDeleted(false);
+                    item.setAvailable(true);
                     menuRepository.save(item);
                 }
                 menuRepository.flush();
-                
-                // Delete / Soft-delete items no longer present in incoming cloud payload
+
+                // Hard-delete items removed from web admin (full replace semantics)
                 for (MenuItem ext : allDbItems) {
                     if (ext.getName() != null && ext.getName().startsWith("↳ ")) continue;
-
                     String extCode = ext.getShortCode() != null ? ext.getShortCode().trim().toUpperCase() : "";
                     String extName = ext.getName() != null ? ext.getName().trim().toLowerCase() : "";
-
-                    boolean codeIn = !extCode.isEmpty() && incomingCodes.contains(extCode);
-                    boolean nameIn = !extName.isEmpty() && incomingNames.contains(extName);
-                    if (!codeIn && !nameIn) {
+                    boolean stillExists = (!extCode.isEmpty() && incomingCodes.contains(extCode))
+                                      || (!extName.isEmpty() && incomingNames.contains(extName));
+                    if (!stillExists) {
                         ext.setDeleted(true);
                         ext.setAvailable(false);
                         menuRepository.save(ext);

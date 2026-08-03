@@ -3,6 +3,8 @@ package com.smartdine.controller;
 import com.smartdine.dto.RestaurantConfigDTO;
 import com.smartdine.coreheart.Restaurant;
 import com.smartdine.repository.RestaurantRepository;
+import com.smartdine.service.ActivationService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
@@ -16,6 +18,9 @@ public class ProvisioningController {
 
     private final RestaurantRepository restaurantRepository;
     private final JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private ActivationService activationService;
 
     public ProvisioningController(RestaurantRepository restaurantRepository, JdbcTemplate jdbcTemplate) {
         this.restaurantRepository = restaurantRepository;
@@ -112,6 +117,125 @@ public class ProvisioningController {
         } catch (Exception e) {
             System.err.println("Database schema metadata query bypassed: " + sql + " | Error: " + e.getMessage());
             return new ArrayList<>();
+        }
+    }
+
+    /**
+     * Industry-grade write endpoint — called by the Web Admin panel to persist
+     * any changes (tables, menu items, categories, waiters, addons) to Cloud SQL.
+     * Uses JPA repositories via ActivationService.syncCloudConfiguration() so that
+     * all column constraints are satisfied and all entities are properly handled.
+     *
+     * When the JavaFX POS clicks "Sync Web Config", it reads from /provision/activate
+     * which reads from the same Cloud SQL — completing the bidirectional sync loop.
+     */
+    @SuppressWarnings("unchecked")
+    @PostMapping("/update-config")
+    @org.springframework.transaction.annotation.Transactional
+    public ResponseEntity<?> updateConfig(@RequestBody Map<String, Object> body) {
+        try {
+            String syncCode = body.get("syncCode") != null ? body.get("syncCode").toString().trim() : null;
+            if (syncCode == null || syncCode.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "syncCode is required"));
+            }
+
+            // Resolve restaurant — try both sync and biller code
+            Restaurant restaurant = restaurantRepository.findByBillerSyncCode(syncCode)
+                    .or(() -> restaurantRepository.findBySyncCodeAndIsDeletedFalse(syncCode))
+                    .orElse(null);
+
+            if (restaurant == null) {
+                // Fallback: raw query across both datasources
+                List<Map<String, Object>> rows = new ArrayList<>();
+                try {
+                    com.smartdine.config.DataSourceContextHolder.set(com.smartdine.config.DataSourceContextHolder.PROD);
+                    rows = jdbcTemplate.queryForList(
+                        "SELECT id, restaurant_id, name, is_test FROM restaurants WHERE sync_code = ? OR biller_sync_code = ? LIMIT 1",
+                        syncCode, syncCode);
+                } catch (Exception ignored) {}
+                if (rows.isEmpty()) {
+                    return ResponseEntity.status(404).body(Map.of("error", "Sync code not found: " + syncCode));
+                }
+                Map<String, Object> rMap = rows.get(0);
+                restaurant = new Restaurant();
+                UUID rId = UUID.fromString(rMap.get("id").toString());
+                restaurant.setId(rId);
+                restaurant.setRestaurantId(rMap.get("restaurant_id") != null
+                    ? UUID.fromString(rMap.get("restaurant_id").toString()) : rId);
+                restaurant.setName(rMap.get("name") != null ? rMap.get("name").toString() : "Restaurant");
+            }
+
+            UUID restaurantId = restaurant.getId() != null ? restaurant.getId() : restaurant.getRestaurantId();
+            com.smartdine.coreheart.TenantContext.setRestaurantId(restaurantId);
+
+            try {
+                // Build config map in the format syncCloudConfiguration expects.
+                // Normalize all incoming fields to handle both Web Admin ("category") and
+                // POS ("categoryName") field naming conventions.
+                Map<String, Object> configMap = new HashMap<>(body);
+                configMap.put("restaurantId", restaurantId.toString());
+
+                // Normalize menuItems: ensure shortCode and categoryName are always set
+                List<Map<String, Object>> rawItems = (List<Map<String, Object>>) body.get("menuItems");
+                if (rawItems != null) {
+                    Set<String> usedCodes = new java.util.LinkedHashSet<>();
+                    List<Map<String, Object>> normalised = new ArrayList<>();
+                    int counter = 1;
+                    for (Map<String, Object> item : rawItems) {
+                        Map<String, Object> t = new HashMap<>(item);
+
+                        // categoryName: prefer explicit field, fall back to "category"
+                        if (t.get("categoryName") == null && t.get("category") != null) {
+                            t.put("categoryName", t.get("category"));
+                        }
+
+                        // shortCode: generate from name if missing
+                        String sc = t.get("shortCode") != null ? t.get("shortCode").toString().trim()
+                                  : t.get("code") != null ? t.get("code").toString().trim() : "";
+                        if (sc.isEmpty()) {
+                            String name = t.get("name") != null ? t.get("name").toString() : "ITM";
+                            sc = (name.length() >= 3 ? name.substring(0, 3) : name).toUpperCase()
+                                    .replaceAll("[^A-Z0-9]", "");
+                            if (sc.isEmpty()) sc = "ITM";
+                        }
+                        while (usedCodes.contains(sc)) { sc = sc + (counter++); }
+                        usedCodes.add(sc);
+                        t.put("shortCode", sc);
+
+                        // veg flag: resolve from boolean or type string
+                        if (t.get("veg") == null) {
+                            t.put("veg", "Non-Veg".equalsIgnoreCase(
+                                t.get("type") != null ? t.get("type").toString() : "") ? false : true);
+                        }
+
+                        normalised.add(t);
+                    }
+                    configMap.put("menuItems", normalised);
+                }
+
+                // Sync via the proven JPA path — handles all constraints correctly
+                activationService.syncCloudConfiguration(configMap);
+
+                int tableCount = body.get("tables") != null ? ((List<?>) body.get("tables")).size() : 0;
+                int menuCount  = rawItems != null ? rawItems.size() : 0;
+
+                System.out.println("✅ [ProvisioningController] Cloud config updated for " + syncCode
+                    + " — " + tableCount + " tables, " + menuCount + " menu items");
+
+                return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "syncCode", syncCode,
+                    "restaurantId", restaurantId.toString(),
+                    "tablesUpdated", tableCount,
+                    "menuItemsUpdated", menuCount
+                ));
+            } finally {
+                com.smartdine.coreheart.TenantContext.clear();
+                com.smartdine.config.DataSourceContextHolder.clear();
+            }
+        } catch (Exception e) {
+            System.err.println("❌ [ProvisioningController] updateConfig failed: " + e.getMessage());
+            return ResponseEntity.status(500).body(Map.of("success", false, "error", e.getMessage()));
         }
     }
 
