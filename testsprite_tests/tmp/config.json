@@ -1,0 +1,14 @@
+{
+  "status": "init",
+  "serverUrl": "https://smartdine-saas.ew.r.appspot.com",
+  "executionArgs": {
+    "projectName": "core-heart",
+    "projectPath": "c:\\Users\\ADITHYAN\\Desktop\\AVK\\smart_dine\\core-heart\\core-heart",
+    "testIds": [],
+    "additionalInstruction": "Run API integration tests against the live SmartDine Cloud Gateway at https://smartdine-saas.ew.r.appspot.com. Test the following 4 endpoints: 1) POST /auth/register to onboard a new test restaurant named TestSprite Bistro with tables, areas, and menu items; 2) POST /auth/login with 3 paths: by restaurant name, by phone (9988776655), and negative test with wrong password; 3) GET /api/public/provision/activate?code=SYNC_CODE from step 1 to verify config DTO is returned; 4) POST /api/sync/process?type=ORDER with JWT from step 2 and a mock outbox event. All requests go to https://smartdine-saas.ew.r.appspot.com. DO NOT test localhost. Use isTest: true in registration payload.",
+    "serverMode": "production",
+    "envs": {
+      "API_KEY": "sk-user-YOoaxIQfjJxxi7vRPOq8H0dLeGTj-AnKEvr9KHi-8VmxmTDz-RCXmlshsKsSOb7vZ7sHrLH6-FLhO2j5IwYferijPq9IdS5wClXqJ-ENYrYH1JPKxf8p9fVN2OhjZJbVSJs"
+    }
+  }
+}

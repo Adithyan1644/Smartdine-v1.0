@@ -1,0 +1,67 @@
+project_name: SmartDine Core Heart
+project_type: Backend API (Spring Boot + JavaFX)
+language: Java 21
+framework: Spring Boot 3.x
+build_tool: Maven
+cloud_platform: Google App Engine (smartdine-saas.ew.r.appspot.com)
+database: PostgreSQL (Cloud SQL + Local)
+auth: JWT (Bearer token)
+
+tech_stack:
+  - Spring Boot 3
+  - Spring Security
+  - Spring Data JPA / Hibernate
+  - JavaFX (local POS UI)
+  - PostgreSQL
+  - Google Cloud App Engine
+  - JmDNS
+  - BCrypt password encoding
+  - Virtual Threads (Java 21)
+
+features:
+  - Multi-tenant restaurant onboarding
+  - JWT authentication and login
+  - Menu management (CRUD)
+  - Table and area management
+  - Order and KOT management
+  - Billing and payment processing
+  - Cloud sync via outbox pattern
+  - Kitchen Display System
+
+api_endpoints:
+  auth:
+    - POST /auth/register
+    - POST /auth/login
+  provision:
+    - GET /api/public/provision/activate
+    - POST /api/public/provision/update-config
+  sync:
+    - POST /api/sync/process
+  menu:
+    - GET/POST/DELETE /api/menu/**
+  tables:
+    - GET/POST/DELETE /api/tables/**
+  orders:
+    - GET/POST /api/orders/**
+
+auth_model:
+  type: JWT Bearer
+  roles:
+    - ADMIN
+    - WAITER
+    - KITCHEN
+
+multi_tenant:
+  strategy: restaurant_id column
+  isolation: per-request TenantContext
+
+entities:
+  - Restaurant
+  - AppUser
+  - DiningTable
+  - MenuCategory
+  - MenuItem
+  - Order
+  - KOT
+  - SystemConfig
+  - SyncOutbox

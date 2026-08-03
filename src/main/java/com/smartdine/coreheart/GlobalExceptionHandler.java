@@ -80,25 +80,8 @@ public class GlobalExceptionHandler {
         boolean isSilent = message != null && SILENT_RUNTIME_MESSAGES.contains(message.trim());
 
         if (!isSilent) {
-            // Log unexpected runtime exceptions to the error log
-            try {
-                File logFile = new File("C:\\Users\\ADITHYAN\\Desktop\\AVK\\smart_dine\\core-heart\\core-heart\\kds_error.log");
-                try (FileWriter fw = new FileWriter(logFile, true);
-                     PrintWriter pw = new PrintWriter(fw)) {
-                    pw.println("===============================================");
-                    pw.println("Time: " + java.time.LocalDateTime.now());
-                    pw.println("Request URI: " + request.getRequestURI());
-                    pw.println("HTTP Method: " + request.getMethod());
-                    pw.println("Exception: " + ex.getClass().getName());
-                    pw.println("Message: " + message);
-                    pw.println("Stack Trace:");
-                    ex.printStackTrace(pw);
-                    pw.println("===============================================");
-                    pw.println();
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
+            // Log unexpected runtime exceptions
+            System.err.println("[GlobalExceptionHandler] RuntimeException: " + message);
         }
 
         return new ResponseEntity<>(
@@ -112,25 +95,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Object> handleAll(Exception ex, HttpServletRequest request) {
-        try {
-            // Write unexpected exceptions to the log file
-            File logFile = new File("C:\\Users\\ADITHYAN\\Desktop\\AVK\\smart_dine\\core-heart\\core-heart\\kds_error.log");
-            try (FileWriter fw = new FileWriter(logFile, true);
-                 PrintWriter pw = new PrintWriter(fw)) {
-                pw.println("===============================================");
-                pw.println("Time: " + java.time.LocalDateTime.now());
-                pw.println("Request URI: " + request.getRequestURI());
-                pw.println("HTTP Method: " + request.getMethod());
-                pw.println("Exception: " + ex.getClass().getName());
-                pw.println("Message: " + ex.getMessage());
-                pw.println("Stack Trace:");
-                ex.printStackTrace(pw);
-                pw.println("===============================================");
-                pw.println();
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        System.err.println("[GlobalExceptionHandler] Exception: " + ex.getMessage());
 
         // Return detailed response
         StringWriter sw = new StringWriter();

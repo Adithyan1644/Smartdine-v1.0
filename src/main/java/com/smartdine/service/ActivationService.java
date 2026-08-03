@@ -760,6 +760,7 @@ public class ActivationService {
      */
     @Transactional
     public void setupManagerAccount(String username, String password, String pin) {
+        System.out.println("🤖 [setupManagerAccount] Starting credentials setup for: " + username);
         UUID restaurantId = TenantContext.getRestaurantId();
         if (restaurantId == null) {
             SystemConfig config = systemConfigRepository.findAll().stream().findFirst()
@@ -767,22 +768,43 @@ public class ActivationService {
             restaurantId = config.getRestaurantId();
         }
 
+        System.out.println("🤖 [setupManagerAccount] Resolved restaurantId: " + restaurantId);
         TenantContext.setRestaurantId(restaurantId);
         try {
-            // Save admin user
-            AppUser admin = new AppUser();
+            // UPSERT: find existing ADMIN user for this restaurant or create a new one.
+            // This prevents "username already exists" errors on re-activation and ensures
+            // that logout → login always works with the credentials set in the wizard.
+            final UUID finalRestaurantId = restaurantId;
+            AppUser admin = userRepository.findByRestaurantIdAndRole(finalRestaurantId, UserRole.ADMIN)
+                    .stream()
+                    .findFirst()
+                    .orElseGet(() -> userRepository.findByUsernameIgnoreCase(username.trim()).orElse(new AppUser()));
+
             admin.setRestaurantId(restaurantId);
             admin.setUsername(username.trim());
             admin.setPassword(passwordEncoder.encode(password));
             admin.setRole(UserRole.ADMIN);
-            admin.setFullName("SaaS Restaurant Owner");
+            if (admin.getFullName() == null || admin.getFullName().isBlank()) {
+                admin.setFullName("SaaS Restaurant Owner");
+            }
             admin.setPin(pin.trim());
             admin.setActive(true);
-            userRepository.save(admin);
+
+            System.out.println("🤖 [setupManagerAccount] Upserting admin user '" + username.trim() + "' to database...");
+            AppUser saved = userRepository.save(admin);
+            System.out.println("🤖 [setupManagerAccount] Saved admin user ID: " + saved.getId());
 
             // Trigger mDNS broadcast service
-            mdnsService.registerService(restaurantId);
+            try {
+                mdnsService.registerService(restaurantId);
+            } catch (Exception mdnsEx) {
+                System.err.println("🤖 [setupManagerAccount] JmDNS warning (non-fatal): " + mdnsEx.getMessage());
+            }
 
+        } catch (Exception e) {
+            System.err.println("🤖 [setupManagerAccount] FATAL ERROR saving admin user: " + e.getMessage());
+            e.printStackTrace();
+            throw e;
         } finally {
             TenantContext.clear();
         }

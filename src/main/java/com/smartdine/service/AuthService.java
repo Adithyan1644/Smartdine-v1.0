@@ -43,6 +43,9 @@ public class AuthService {
     @Autowired
     private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private com.smartdine.repository.SystemConfigRepository systemConfigRepository;
+
     // Professional Multi-Credential Login for Admin/Setup (User ID, Phone Number, Restaurant Name, Email, Sync Code)
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public AuthResponse authenticateUser(LoginRequest request) {
@@ -91,13 +94,34 @@ public class AuthService {
             }
         }
 
-        // 5. Fallback search across all users
+        // 5. Fallback: search all users by username or phone
         if (user == null) {
             user = userRepository.findAll().stream()
                     .filter(u -> (u.getUsername() != null && u.getUsername().trim().equalsIgnoreCase(targetCred)) ||
                                  (u.getPhone() != null && u.getPhone().trim().equalsIgnoreCase(targetCred)))
-                    .findFirst()
-                    .orElseThrow(() -> new RuntimeException("Account not found. Please check your User ID, Phone Number, Restaurant Name, or Sync Code."));
+                    .findFirst().orElse(null);
+        }
+
+        // 6. LOCAL BILLER STATION FALLBACK: If still not found, try the ADMIN user of the
+        //    currently activated restaurant (from SystemConfig). This covers the case where
+        //    the operator sets a local username during setup (e.g. "Test1") that doesn't
+        //    match the cloud email/phone, and then logs out and tries to log back in.
+        if (user == null) {
+            var activeConfig = systemConfigRepository.findAll().stream().findFirst().orElse(null);
+            if (activeConfig != null && activeConfig.getRestaurantId() != null) {
+                UUID activeRestId = activeConfig.getRestaurantId();
+                user = userRepository.findByRestaurantIdAndRole(activeRestId, UserRole.ADMIN)
+                        .stream().findFirst()
+                        .orElseGet(() -> userRepository.findByRestaurantId(activeRestId)
+                                .stream().findFirst().orElse(null));
+                if (user != null) {
+                    System.out.println("[AuthService] Resolved user via active SystemConfig restaurantId: " + activeRestId);
+                }
+            }
+        }
+
+        if (user == null) {
+            throw new RuntimeException("Account not found. Please check your User ID, Phone Number, Restaurant Name, or Sync Code.");
         }
 
         boolean matchesBcrypt = user.getPassword() != null && passwordEncoder.matches(rawPassword, user.getPassword());
@@ -280,18 +304,7 @@ public class AuthService {
         admin.setActive(true);
         userRepository.save(admin);
 
-        // Save real-world setup data if provided in OnboardingRequest
-        if (request.getAreas() != null && !request.getAreas().isEmpty()) {
-            for (String areaName : request.getAreas()) {
-                if (areaName != null && !areaName.trim().isEmpty()) {
-                    try {
-                        jdbcTemplate.update("INSERT INTO areas (id, name, restaurant_id) VALUES (?, ?, ?)", UUID.randomUUID(), areaName.trim(), newRestId);
-                    } catch (Exception e) {
-                        System.err.println("Area table insert notice: " + e.getMessage());
-                    }
-                }
-            }
-        }
+        // Areas are stored directly on DiningTable entities (table.setAreaName)
 
         if (request.getTables() != null && !request.getTables().isEmpty()) {
             for (java.util.Map<String, Object> tableMap : request.getTables()) {

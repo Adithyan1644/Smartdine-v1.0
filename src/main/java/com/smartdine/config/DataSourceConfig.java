@@ -118,12 +118,24 @@ public class DataSourceConfig {
         RoutingDataSource routing = new RoutingDataSource();
         routing.setDefaultTargetDataSource(prodDs); // App Engine default → PROD
         routing.setTargetDataSources(targets);
-        routing.afterPropertiesSet();
+        // Ensure both DEV and PROD databases have mandatory schema columns (e.g. app_users.phone)
+        autoUpdateSchema(devDs, "DEV");
+        autoUpdateSchema(prodDs, "PROD");
 
         System.out.println("[DataSourceConfig] ✅ Dual GCP Cloud SQL routing ACTIVE:");
         System.out.println("   DEV  (SmartDine-DEV-Pool)  → smartdine_dev  (sandbox)");
         System.out.println("   PROD (SmartDine-PROD-Pool) → smartdine       (production)");
 
         return routing;
+    }
+
+    private void autoUpdateSchema(DataSource ds, String name) {
+        try (java.sql.Connection conn = ds.getConnection();
+             java.sql.Statement stmt = conn.createStatement()) {
+            stmt.executeUpdate("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS phone VARCHAR(50)");
+            System.out.println("[DataSourceConfig] ✅ Schema verified for " + name + " (app_users.phone)");
+        } catch (Exception e) {
+            System.err.println("[DataSourceConfig] Schema update notice for " + name + ": " + e.getMessage());
+        }
     }
 }
