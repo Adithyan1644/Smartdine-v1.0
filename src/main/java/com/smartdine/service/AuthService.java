@@ -335,10 +335,15 @@ public class AuthService {
         // Clean-slate multi-environment architecture: zero dummy data seeding
         // Custom operational data is saved directly above when provided by merchant.
 
+        // Generate a JWT so the user is automatically authenticated after signup
+        String token = jwtUtil.generateToken(loginUsername, UserRole.ADMIN.name(), newRestId);
+
         return java.util.Map.of(
             "success", true,
             "syncCode", finalSyncCode,
-            "restaurantId", newRestId.toString()
+            "restaurantId", newRestId.toString(),
+            "restaurantName", restaurantName,
+            "token", token
         );
     }
 

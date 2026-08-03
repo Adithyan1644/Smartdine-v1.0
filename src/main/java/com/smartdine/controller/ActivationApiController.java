@@ -289,26 +289,62 @@ public class ActivationApiController {
     /**
      * Recovery endpoint: re-creates the ADMIN user if it was accidentally deleted by a broken sync.
      * Safe to call at any time — only creates if missing, never overwrites existing admin.
-     * Usage: GET http://localhost:8080/api/activation/recover-admin?username=admin&password=admin123&pin=1234
+     *
+     * Usage (local):  GET http://localhost:8080/api/activation/recover-admin?username=admin&password=admin123&pin=1234
+     * Usage (cloud):  GET https://smartdine-saas.ew.r.appspot.com/api/activation/recover-admin?syncCode=SD-901111&username=admin&password=admin123&pin=1234
      */
     @GetMapping("/recover-admin")
     public ResponseEntity<?> recoverAdmin(
             @RequestParam(defaultValue = "admin") String username,
             @RequestParam(defaultValue = "admin123") String password,
-            @RequestParam(defaultValue = "1234") String pin) {
+            @RequestParam(defaultValue = "1234") String pin,
+            @RequestParam(required = false) String syncCode) {
         try {
-            com.smartdine.coreheart.SystemConfig config = systemConfigRepository.findAll().stream()
-                    .findFirst().orElse(null);
-            if (config == null) {
-                return ResponseEntity.badRequest().body(Map.of("success", false,
-                        "error", "System not activated yet. Please use 'Sync New Biller' first."));
+            UUID restaurantId = null;
+
+            // Approach 1: Resolve by syncCode from restaurants table (works on Cloud SQL without system_configs)
+            if (syncCode != null && !syncCode.trim().isEmpty()) {
+                String code = syncCode.trim();
+                var restOpt = restaurantRepository.findByBillerSyncCode(code)
+                        .or(() -> restaurantRepository.findBySyncCodeAndIsDeletedFalse(code));
+                if (restOpt.isPresent()) {
+                    restaurantId = restOpt.get().getId() != null
+                            ? restOpt.get().getId() : restOpt.get().getRestaurantId();
+                } else {
+                    // Try raw JDBC fallback (cross-datasource)
+                    try {
+                        var rows = jdbcTemplate.queryForList(
+                            "SELECT id FROM restaurants WHERE sync_code = ? OR biller_sync_code = ? LIMIT 1",
+                            code, code);
+                        if (!rows.isEmpty() && rows.get(0).get("id") != null) {
+                            restaurantId = UUID.fromString(rows.get(0).get("id").toString());
+                        }
+                    } catch (Exception ignored) {}
+                }
+                if (restaurantId == null) {
+                    return ResponseEntity.badRequest().body(Map.of("success", false,
+                            "error", "Sync code '" + code + "' not found in database."));
+                }
             }
 
-            UUID restaurantId = config.getRestaurantId();
+            // Approach 2: Fall back to SystemConfig (works locally after activation)
+            if (restaurantId == null) {
+                com.smartdine.coreheart.SystemConfig config = systemConfigRepository.findAll().stream()
+                        .findFirst().orElse(null);
+                if (config != null) {
+                    restaurantId = config.getRestaurantId();
+                }
+            }
+
+            if (restaurantId == null) {
+                return ResponseEntity.badRequest().body(Map.of("success", false,
+                        "error", "Cannot resolve restaurant. Provide ?syncCode=SD-XXXXXX or activate the system first."));
+            }
 
             // Check if admin already exists — never overwrite
+            final UUID finalRestaurantId = restaurantId;
             boolean adminExists = userRepository.findAll().stream()
-                    .anyMatch(u -> restaurantId.equals(u.getRestaurantId())
+                    .anyMatch(u -> finalRestaurantId.equals(u.getRestaurantId())
                             && u.getRole() == com.smartdine.coreheart.UserRole.ADMIN
                             && u.isActive());
 

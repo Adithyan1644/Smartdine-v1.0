@@ -760,14 +760,18 @@ public class ActivationService {
      */
     @Transactional
     public void setupManagerAccount(String username, String password, String pin) {
-        SystemConfig config = systemConfigRepository.findAll().stream().findFirst()
-                .orElseThrow(() -> new IllegalStateException("System must be activated before setting up manager account"));
+        UUID restaurantId = TenantContext.getRestaurantId();
+        if (restaurantId == null) {
+            SystemConfig config = systemConfigRepository.findAll().stream().findFirst()
+                    .orElseThrow(() -> new IllegalStateException("System must be activated before setting up manager account"));
+            restaurantId = config.getRestaurantId();
+        }
 
-        TenantContext.setRestaurantId(config.getRestaurantId());
+        TenantContext.setRestaurantId(restaurantId);
         try {
             // Save admin user
             AppUser admin = new AppUser();
-            admin.setRestaurantId(config.getRestaurantId());
+            admin.setRestaurantId(restaurantId);
             admin.setUsername(username.trim());
             admin.setPassword(passwordEncoder.encode(password));
             admin.setRole(UserRole.ADMIN);
@@ -777,7 +781,7 @@ public class ActivationService {
             userRepository.save(admin);
 
             // Trigger mDNS broadcast service
-            mdnsService.registerService(config.getRestaurantId());
+            mdnsService.registerService(restaurantId);
 
         } finally {
             TenantContext.clear();

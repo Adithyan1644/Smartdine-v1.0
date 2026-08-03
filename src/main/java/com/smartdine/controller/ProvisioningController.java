@@ -4,6 +4,7 @@ import com.smartdine.dto.RestaurantConfigDTO;
 import com.smartdine.coreheart.Restaurant;
 import com.smartdine.repository.RestaurantRepository;
 import com.smartdine.service.ActivationService;
+import com.smartdine.config.DataSourceContextHolder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -32,6 +33,33 @@ public class ProvisioningController {
                                                                @RequestParam(required = false, name = "code") String code) {
         String effectiveCode = (syncCode != null && !syncCode.trim().isEmpty()) ? syncCode : code;
         return activate(effectiveCode);
+    }
+
+    @GetMapping("/list-active-restaurants")
+    public ResponseEntity<?> listActiveRestaurants() {
+        Map<String, Object> result = new HashMap<>();
+        try {
+            DataSourceContextHolder.set(DataSourceContextHolder.PROD);
+            List<Map<String, Object>> prodRows = jdbcTemplate.queryForList(
+                "SELECT id, restaurant_id as \"restaurantId\", name, sync_code as \"syncCode\", biller_sync_code as \"billerSyncCode\", is_test as \"isTest\" FROM restaurants"
+            );
+            result.put("PROD", prodRows);
+        } catch (Exception e) {
+            result.put("PROD_error", e.getMessage());
+        }
+
+        try {
+            DataSourceContextHolder.set(DataSourceContextHolder.DEV);
+            List<Map<String, Object>> devRows = jdbcTemplate.queryForList(
+                "SELECT id, restaurant_id as \"restaurantId\", name, sync_code as \"syncCode\", biller_sync_code as \"billerSyncCode\", is_test as \"isTest\" FROM restaurants"
+            );
+            result.put("DEV", devRows);
+        } catch (Exception e) {
+            result.put("DEV_error", e.getMessage());
+        } finally {
+            DataSourceContextHolder.clear();
+        }
+        return ResponseEntity.ok(result);
     }
 
     public ResponseEntity<RestaurantConfigDTO> activate(String syncCode) {
