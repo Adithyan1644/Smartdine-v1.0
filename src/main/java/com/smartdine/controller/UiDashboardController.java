@@ -4,6 +4,8 @@ import java.net.URL;
 import java.util.ResourceBundle;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.UUID;
 import java.util.Optional;
 import java.time.LocalDateTime;
@@ -616,6 +618,9 @@ public class UiDashboardController implements Initializable {
 
     @Override
     public void initialize(URL location, ResourceBundle resources) {
+        // Startup Spooler Cleanup: Wipe any leftover failed spool files on app launch
+        purgeAllWindowsPrintSpoolerQueues();
+
         // Set default tenant context for the Biller PC
         UUID defaultRid = TenantContext.getRestaurantId();
         if (defaultRid == null) {
@@ -626,6 +631,7 @@ public class UiDashboardController implements Initializable {
         javafx.application.Platform.runLater(() -> {
             try {
                 if (rootPane != null && rootPane.getScene() != null && rootPane.getScene().getWindow() instanceof javafx.stage.Stage stage) {
+                    com.smartdine.coreheart.UiLauncher.applyAppIcon(stage);
                     javafx.geometry.Rectangle2D bounds = javafx.stage.Screen.getPrimary().getVisualBounds();
                     stage.setX(bounds.getMinX());
                     stage.setY(bounds.getMinY());
@@ -3413,16 +3419,17 @@ public class UiDashboardController implements Initializable {
             UUID resId = TenantContext.getRestaurantId();
             if (resId == null) resId = getActiveRestaurantId();
             com.smartdine.coreheart.RestaurantSettings sysSettings = getEffectiveRestaurantSettings(resId);
-            com.smartdine.coreheart.BillingConfig bConfig = billingConfigRepository.findFirstByOrderByIdAsc().orElseGet(com.smartdine.coreheart.BillingConfig::new);
-            boolean isTaxActive = (sysSettings == null || sysSettings.isTaxEnabled());
+            com.smartdine.coreheart.SystemConfig sysConfig = systemConfigRepository.findAll().stream().findFirst().orElse(null);
+            boolean isTaxActive = (sysSettings != null && sysSettings.isTaxEnabled());
 
             java.math.BigDecimal cgst = java.math.BigDecimal.ZERO;
             java.math.BigDecimal sgst = java.math.BigDecimal.ZERO;
 
             if (isTaxActive) {
-                java.math.BigDecimal taxRate = java.math.BigDecimal.valueOf(0.025);
-                cgst = taxableSubtotal.multiply(taxRate);
-                sgst = taxableSubtotal.multiply(taxRate);
+                double cgstRateVal = (sysConfig != null && sysConfig.getCgstRate() != null) ? sysConfig.getCgstRate().doubleValue() / 100.0 : ((sysSettings != null ? sysSettings.getTaxRatePercentage() : 5.0) / 200.0);
+                double sgstRateVal = (sysConfig != null && sysConfig.getSgstRate() != null) ? sysConfig.getSgstRate().doubleValue() / 100.0 : ((sysSettings != null ? sysSettings.getTaxRatePercentage() : 5.0) / 200.0);
+                cgst = taxableSubtotal.multiply(java.math.BigDecimal.valueOf(cgstRateVal));
+                sgst = taxableSubtotal.multiply(java.math.BigDecimal.valueOf(sgstRateVal));
             }
             java.math.BigDecimal grandTotalVal = taxableSubtotal.add(cgst).add(sgst);
 
@@ -3692,16 +3699,17 @@ public class UiDashboardController implements Initializable {
                 UUID resId2 = TenantContext.getRestaurantId();
                 if (resId2 == null) resId2 = getActiveRestaurantId();
                 com.smartdine.coreheart.RestaurantSettings sysSettings2 = getEffectiveRestaurantSettings(resId2);
-                com.smartdine.coreheart.BillingConfig bConfig2 = billingConfigRepository.findFirstByOrderByIdAsc().orElseGet(com.smartdine.coreheart.BillingConfig::new);
-                boolean isTaxActive2 = (sysSettings2 == null || sysSettings2.isTaxEnabled());
+                com.smartdine.coreheart.SystemConfig sysConfig2 = systemConfigRepository.findAll().stream().findFirst().orElse(null);
+                boolean isTaxActive2 = (sysSettings2 != null && sysSettings2.isTaxEnabled());
 
                 java.math.BigDecimal cgst = java.math.BigDecimal.ZERO;
                 java.math.BigDecimal sgst = java.math.BigDecimal.ZERO;
 
                 if (isTaxActive2) {
-                    java.math.BigDecimal taxRate = java.math.BigDecimal.valueOf(0.025);
-                    cgst = taxableSubtotal.multiply(taxRate);
-                    sgst = taxableSubtotal.multiply(taxRate);
+                    double cgstRateVal = (sysConfig2 != null && sysConfig2.getCgstRate() != null) ? sysConfig2.getCgstRate().doubleValue() / 100.0 : ((sysSettings2 != null ? sysSettings2.getTaxRatePercentage() : 5.0) / 200.0);
+                    double sgstRateVal = (sysConfig2 != null && sysConfig2.getSgstRate() != null) ? sysConfig2.getSgstRate().doubleValue() / 100.0 : ((sysSettings2 != null ? sysSettings2.getTaxRatePercentage() : 5.0) / 200.0);
+                    cgst = taxableSubtotal.multiply(java.math.BigDecimal.valueOf(cgstRateVal));
+                    sgst = taxableSubtotal.multiply(java.math.BigDecimal.valueOf(sgstRateVal));
                 }
                 java.math.BigDecimal grandTotalVal = taxableSubtotal.add(cgst).add(sgst);
 
@@ -3908,16 +3916,17 @@ public class UiDashboardController implements Initializable {
             UUID resId3 = TenantContext.getRestaurantId();
             if (resId3 == null) resId3 = getActiveRestaurantId();
             com.smartdine.coreheart.RestaurantSettings sysSettings3 = getEffectiveRestaurantSettings(resId3);
-            com.smartdine.coreheart.BillingConfig bConfig3 = billingConfigRepository.findFirstByOrderByIdAsc().orElseGet(com.smartdine.coreheart.BillingConfig::new);
-            boolean isTaxActive3 = (sysSettings3 == null || sysSettings3.isTaxEnabled());
+            com.smartdine.coreheart.SystemConfig sysConfig3 = systemConfigRepository.findAll().stream().findFirst().orElse(null);
+            boolean isTaxActive3 = (sysSettings3 != null && sysSettings3.isTaxEnabled());
 
             java.math.BigDecimal cgst = java.math.BigDecimal.ZERO;
             java.math.BigDecimal sgst = java.math.BigDecimal.ZERO;
 
             if (isTaxActive3) {
-                java.math.BigDecimal taxRate = java.math.BigDecimal.valueOf(0.025);
-                cgst = taxableSubtotal.multiply(taxRate);
-                sgst = taxableSubtotal.multiply(taxRate);
+                double cgstRateVal = (sysConfig3 != null && sysConfig3.getCgstRate() != null) ? sysConfig3.getCgstRate().doubleValue() / 100.0 : ((sysSettings3 != null ? sysSettings3.getTaxRatePercentage() : 5.0) / 200.0);
+                double sgstRateVal = (sysConfig3 != null && sysConfig3.getSgstRate() != null) ? sysConfig3.getSgstRate().doubleValue() / 100.0 : ((sysSettings3 != null ? sysSettings3.getTaxRatePercentage() : 5.0) / 200.0);
+                cgst = taxableSubtotal.multiply(java.math.BigDecimal.valueOf(cgstRateVal));
+                sgst = taxableSubtotal.multiply(java.math.BigDecimal.valueOf(sgstRateVal));
             }
             java.math.BigDecimal grandTotalVal = taxableSubtotal.add(cgst).add(sgst);
 
@@ -6885,9 +6894,21 @@ public class UiDashboardController implements Initializable {
                 }
                 order.setSubTotal(newSubTotal);
 
-                java.math.BigDecimal taxRate = java.math.BigDecimal.valueOf(0.025);
-                java.math.BigDecimal cgst = newSubTotal.multiply(taxRate);
-                java.math.BigDecimal sgst = newSubTotal.multiply(taxRate);
+                UUID resIdMod = order != null && order.getRestaurantId() != null ? order.getRestaurantId() : TenantContext.getRestaurantId();
+                if (resIdMod == null) resIdMod = getActiveRestaurantId();
+                com.smartdine.coreheart.RestaurantSettings sysSettingsMod = getEffectiveRestaurantSettings(resIdMod);
+                com.smartdine.coreheart.SystemConfig sysConfigMod = systemConfigRepository.findAll().stream().findFirst().orElse(null);
+                boolean isTaxActiveMod = (sysSettingsMod != null && sysSettingsMod.isTaxEnabled());
+
+                java.math.BigDecimal cgst = java.math.BigDecimal.ZERO;
+                java.math.BigDecimal sgst = java.math.BigDecimal.ZERO;
+
+                if (isTaxActiveMod) {
+                    double cgstRateVal = (sysConfigMod != null && sysConfigMod.getCgstRate() != null) ? sysConfigMod.getCgstRate().doubleValue() / 100.0 : ((sysSettingsMod != null ? sysSettingsMod.getTaxRatePercentage() : 5.0) / 200.0);
+                    double sgstRateVal = (sysConfigMod != null && sysConfigMod.getSgstRate() != null) ? sysConfigMod.getSgstRate().doubleValue() / 100.0 : ((sysSettingsMod != null ? sysSettingsMod.getTaxRatePercentage() : 5.0) / 200.0);
+                    cgst = newSubTotal.multiply(java.math.BigDecimal.valueOf(cgstRateVal));
+                    sgst = newSubTotal.multiply(java.math.BigDecimal.valueOf(sgstRateVal));
+                }
                 order.setCgst(cgst);
                 order.setSgst(sgst);
                 order.setGrandTotal(newSubTotal.add(cgst).add(sgst));
@@ -7800,6 +7821,37 @@ public class UiDashboardController implements Initializable {
         return left + " ".repeat(spaces) + right;
     }
 
+    private List<String> wrapTextToLines(String text, int limit) {
+        List<String> lines = new ArrayList<>();
+        if (text == null || text.trim().isEmpty() || limit <= 0) return lines;
+        String[] words = text.split("\\s+");
+        StringBuilder currentLine = new StringBuilder();
+
+        for (String word : words) {
+            if (currentLine.length() + word.length() + (currentLine.length() > 0 ? 1 : 0) > limit) {
+                if (currentLine.length() > 0) {
+                    lines.add(currentLine.toString());
+                    currentLine = new StringBuilder();
+                }
+                if (word.length() > limit) {
+                    lines.add(word.substring(0, limit));
+                    currentLine.append(word.substring(limit));
+                } else {
+                    currentLine.append(word);
+                }
+            } else {
+                if (currentLine.length() > 0) {
+                    currentLine.append(" ");
+                }
+                currentLine.append(word);
+            }
+        }
+        if (currentLine.length() > 0) {
+            lines.add(currentLine.toString());
+        }
+        return lines;
+    }
+
     private void triggerThermalReceiptPrinting(Order order) {
         try {
             System.out.println("🖨️ Printing thermal receipt for order: " + (order != null ? order.getOrderNumber() : "NEW"));
@@ -7840,17 +7892,39 @@ public class UiDashboardController implements Initializable {
                 receipt.append("Type: Delivery\n");
                 String cName = (order != null && order.getCustomerName() != null) ? order.getCustomerName() : currentCustomerName;
                 String cPhone = (order != null && order.getCustomerPhone() != null) ? order.getCustomerPhone() : currentCustomerPhone;
-                if (!cName.isEmpty()) {
-                    receipt.append("Cust: ").append(cName).append("\n");
+                if (cName != null && !cName.trim().isEmpty()) {
+                    receipt.append("Cust : ").append(cName.trim()).append("\n");
                 }
-                if (!cPhone.isEmpty()) {
-                    receipt.append("Phone: ").append(cPhone).append("\n");
+                if (cPhone != null && !cPhone.trim().isEmpty()) {
+                    receipt.append("Phone: ").append(cPhone.trim()).append("\n");
+                }
+
+                // Extract delivery address from input field, order tableName, or order notes
+                String address = "";
+                if (deliveryAddressField != null && deliveryAddressField.getText() != null && !deliveryAddressField.getText().trim().isEmpty()) {
+                    address = deliveryAddressField.getText().trim();
+                } else if (order != null && order.getTableName() != null && order.getTableName().startsWith("Delivery: ")) {
+                    address = order.getTableName().substring("Delivery: ".length()).trim();
+                } else if (order != null && order.getNotes() != null && !order.getNotes().trim().isEmpty()) {
+                    address = order.getNotes().trim();
+                }
+
+                if (address != null && !address.trim().isEmpty()) {
+                    receipt.append("Addr : ");
+                    List<String> wrappedLines = wrapTextToLines(address.trim(), maxCols - 7);
+                    for (int i = 0; i < wrappedLines.size(); i++) {
+                        if (i == 0) {
+                            receipt.append(wrappedLines.get(0)).append("\n");
+                        } else {
+                            receipt.append("       ").append(wrappedLines.get(i)).append("\n");
+                        }
+                    }
                 }
             } else { // PICK_UP / TAKEAWAY
                 receipt.append("Type: Pickup\n");
                 String cName = (order != null && order.getCustomerName() != null) ? order.getCustomerName() : currentCustomerName;
-                if (!cName.isEmpty()) {
-                    receipt.append("Cust: ").append(cName).append("\n");
+                if (cName != null && !cName.trim().isEmpty()) {
+                    receipt.append("Cust: ").append(cName.trim()).append("\n");
                 }
             }
 
@@ -7969,7 +8043,19 @@ public class UiDashboardController implements Initializable {
                     }
 
                     if (targetService != null) {
-                        // Construct zero paper waste ESC/POS byte stream
+                        String printerName = targetService.getName();
+
+                        // 1. Native 0ms Java Status Check (Win32 Spooler Memory)
+                        javax.print.attribute.PrintServiceAttributeSet attrs = targetService.getAttributes();
+                        javax.print.attribute.standard.PrinterIsAcceptingJobs accepting = 
+                                (javax.print.attribute.standard.PrinterIsAcceptingJobs) attrs.get(javax.print.attribute.standard.PrinterIsAcceptingJobs.class);
+                        if (accepting != null && accepting == javax.print.attribute.standard.PrinterIsAcceptingJobs.NOT_ACCEPTING_JOBS) {
+                            System.out.println("⚠️ Thermal Printer [" + printerName + "] is NOT ACCEPTING JOBS. Discarding print request.");
+                            purgePrinterSpoolerQueueAsync(printerName);
+                            return;
+                        }
+
+                        // 2. Construct zero paper waste ESC/POS byte stream (0ms)
                         java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
                         
                         // ESC @ (Initialize Printer)
@@ -7986,12 +8072,25 @@ public class UiDashboardController implements Initializable {
 
                         byte[] zeroWasteBytes = baos.toByteArray();
 
+                        // 3. Immediately send bytes to Win32 Print Subsystem (INSTANT 0ms!)
                         javax.print.DocPrintJob job = targetService.createPrintJob();
+                        
+                        job.addPrintJobListener(new javax.print.event.PrintJobAdapter() {
+                            @Override
+                            public void printJobFailed(javax.print.event.PrintJobEvent pje) {
+                                System.err.println("❌ Print job failed on [" + printerName + "]. Purging spooler queue asynchronously.");
+                                purgePrinterSpoolerQueueAsync(printerName);
+                            }
+                        });
+
                         javax.print.DocFlavor flavor = javax.print.DocFlavor.INPUT_STREAM.AUTOSENSE;
                         java.io.ByteArrayInputStream bais = new java.io.ByteArrayInputStream(zeroWasteBytes);
                         javax.print.Doc doc = new javax.print.SimpleDoc(bais, flavor, null);
                         job.print(doc, null);
-                        System.out.println("✅ Zero-waste thermal receipt printed on printer: " + targetService.getName());
+                        System.out.println("✅ Zero-waste thermal receipt printed INSTANTLY on printer: " + printerName);
+
+                        // 4. Run background spooler cleanup asynchronously (Fire & Forget, 0ms blocking time)
+                        purgePrinterSpoolerQueueAsync(printerName);
                     } else {
                         System.out.println("⚠️ No thermal printer found on Windows system.");
                     }
@@ -8003,6 +8102,27 @@ public class UiDashboardController implements Initializable {
         } catch (Exception e) {
             System.err.println("Failed to trigger printer: " + e.getMessage());
         }
+    }
+
+    private void purgeAllWindowsPrintSpoolerQueues() {
+        Thread.ofVirtual().start(() -> {
+            try {
+                String cmd = "Get-Printer | Where-Object { $_.Name -like '*POS*' -or $_.Name -like '*80*' -or $_.Name -like '*Thermal*' -or $_.Name -like '*Receipt*' -or $_.Name -like '*Epson*' -or $_.Name -like '*Xprinter*' -or $_.Name -like '*TVSE*' -or $_.Name -like '*PeriPeri*' } | ForEach-Object { Get-PrintJob -PrinterName $_.Name } | Remove-PrintJob";
+                new ProcessBuilder("powershell.exe", "-NoProfile", "-Command", cmd).start();
+                System.out.println("🧹 Windows Print Spooler: Cleaned up all leftover spooler jobs on application startup.");
+            } catch (Exception ignored) {}
+        });
+    }
+
+    private void purgePrinterSpoolerQueueAsync(String printerName) {
+        if (printerName == null || printerName.trim().isEmpty()) return;
+        Thread.ofVirtual().start(() -> {
+            try {
+                String cleanName = printerName.replace("'", "''");
+                String cmd = "Get-PrintJob -PrinterName '" + cleanName + "' | Where-Object { $_.JobStatus -like '*Error*' -or $_.JobStatus -like '*Offline*' -or $_.JobStatus -like '*Deleting*' } | Remove-PrintJob";
+                new ProcessBuilder("powershell.exe", "-NoProfile", "-Command", cmd).start();
+            } catch (Exception ignored) {}
+        });
     }
 
     public void refreshMenuAndStockViews() {
@@ -8639,10 +8759,25 @@ public class UiDashboardController implements Initializable {
                 Button delBtn = new Button("×");
                 delBtn.setStyle("-fx-background-color: transparent; -fx-text-fill: #EF4444; -fx-font-weight: bold; -fx-padding: 0 2; -fx-cursor: hand;");
                 delBtn.setOnAction(e -> {
+                    String deletedName = addon.getName();
                     addonItemRepository.delete(addon);
                     addonItemRepository.flush();
                     activationService.syncAddonsToDisk(restaurantId);
                     addonsListPane.getChildren().remove(chip);
+
+                    // Enqueue deletion event to sync_outbox for durable cloud delivery
+                    if (deletedName != null && !deletedName.trim().isEmpty()) {
+                        final String nameToDelete = deletedName.trim();
+                        final UUID restId = restaurantId;
+                        final String effectiveSyncCode = (config != null && config.getActivationCode() != null) ? config.getActivationCode().trim() : "";
+                        if (cloudSyncService != null) {
+                            cloudSyncService.enqueueOutboxEvent("ADDON_DELETED", Map.of(
+                                "name", nameToDelete,
+                                "restaurantId", restId.toString(),
+                                "syncCode", effectiveSyncCode
+                            ));
+                        }
+                    }
                 });
 
                 chip.getChildren().addAll(lbl, delBtn);
@@ -8677,6 +8812,22 @@ public class UiDashboardController implements Initializable {
                     com.smartdine.coreheart.AddonItem item = new com.smartdine.coreheart.AddonItem(restaurantId, name, price);
                     addonItemRepository.saveAndFlush(item);
                     activationService.syncAddonsToDisk(restaurantId);
+
+                    // Enqueue creation event to sync_outbox for durable cloud delivery
+                    final String addonName = name;
+                    final BigDecimal addonPrice = price;
+                    final UUID restId = restaurantId;
+                    final String effectiveSyncCode = (config != null && config.getActivationCode() != null) ? config.getActivationCode().trim() : "";
+                    if (cloudSyncService != null) {
+                        cloudSyncService.enqueueOutboxEvent("ADDON_CREATED", Map.of(
+                            "restaurantId", restId.toString(),
+                            "syncCode", effectiveSyncCode,
+                            "name", addonName,
+                            "price", addonPrice,
+                            "isAvailable", true
+                        ));
+                    }
+
                     addonNameField.clear();
                     addonPriceField.clear();
                     refreshAddonChips.run();

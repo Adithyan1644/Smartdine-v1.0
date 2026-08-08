@@ -92,6 +92,11 @@ public class ActivationService {
 
     /**
      * Executes the cloud handshake, pulls config, seeds the database.
+     * ⚠️ DESTRUCTIVE — wipes orders/KOTs/customers/menu/tables and non-waiter
+     * users. This must ONLY be called from the one-time activation flow
+     * (ActivationApiController / UiActivationController), gated by
+     * isSystemActivated(). NEVER call this from a recurring scheduler —
+     * use refreshFromCloud() instead for periodic background syncs.
      */
     @Transactional
     public Map<String, Object> activateSystem(String activationCode, String gatewayUrl) throws Exception {
@@ -202,13 +207,6 @@ public class ActivationService {
             restaurantRepository.save(restaurantRecord);
             System.out.println("✅ [ActivationService] Restaurant row upserted with syncCode=" + activationCode.trim() + ", restaurantId=" + restaurantId);
 
-            // 4c. Multi-Alias Offline Credential Seeding (Email + Restaurant Name + Phone)
-            String adminUser = (String) (config.get("adminUsername") != null ? config.get("adminUsername") : config.get("ownerEmail"));
-            String adminPwd = (String) config.get("adminPasswordHash");
-            String adminPhone = (String) (config.get("adminPhone") != null ? config.get("adminPhone") : config.get("phone"));
-            String adminName = (String) (config.get("adminFullName") != null ? config.get("adminFullName") : config.get("ownerName"));
-            seedLocalAdminAliases(restaurantId, restaurantName, adminUser, adminPwd, adminPhone, adminName);
-
             // Trigger GCP IP Reporting immediately on activation
             if (cloudIpReporter != null) {
                 Thread.ofVirtual().start(cloudIpReporter::reportIpToCloud);
@@ -302,15 +300,38 @@ public class ActivationService {
                 }
             }
 
-            // 8. Seed Menu Items
+            // 8. Seed / Sync Menu Items — full replace semantics (hard-delete removed items)
             List<Map<String, Object>> itemsList = (List<Map<String, Object>>) config.get("menuItems");
             if (itemsList != null) {
+                List<MenuItem> existingDbItems = new ArrayList<>(menuRepository.findByRestaurantId(restaurantId));
+                Set<String> incomingCodes = new HashSet<>();
+                Set<String> incomingNames = new HashSet<>();
+
                 for (Map<String, Object> itm : itemsList) {
-                    MenuItem item = new MenuItem();
-                    item.setRestaurantId(restaurantId);
-                    item.setName((String) itm.get("name"));
+                    String rawName = (String) itm.get("name");
+                    if (rawName == null || rawName.trim().isEmpty()) continue;
+                    String finalName = rawName.trim();
                     String shortCode = (String) (itm.get("shortCode") != null ? itm.get("shortCode") : itm.get("code"));
-                    item.setShortCode(shortCode);
+                    if (shortCode == null || shortCode.trim().isEmpty()) {
+                        shortCode = (finalName.length() >= 3 ? finalName.substring(0, 3) : finalName).toUpperCase().replaceAll("[^A-Z0-9]", "");
+                        if (shortCode.isEmpty()) shortCode = "ITM";
+                    }
+                    String finalCode = shortCode.trim().toUpperCase();
+
+                    incomingCodes.add(finalCode);
+                    incomingNames.add(finalName.toLowerCase());
+
+                    MenuItem item = existingDbItems.stream()
+                        .filter(i -> (i.getShortCode() != null && i.getShortCode().trim().equalsIgnoreCase(finalCode))
+                                  || (i.getName() != null && i.getName().trim().equalsIgnoreCase(finalName)))
+                        .findFirst().orElse(null);
+
+                    if (item == null) {
+                        item = new MenuItem();
+                        item.setRestaurantId(restaurantId);
+                    }
+                    item.setName(finalName);
+                    item.setShortCode(finalCode);
                     
                     Object priceObj = itm.get("price");
                     BigDecimal price = priceObj != null ? new BigDecimal(priceObj.toString()) : BigDecimal.ZERO;
@@ -328,6 +349,7 @@ public class ActivationService {
                     }
                     item.setVeg(isVeg);
                     item.setAvailable(true);
+                    item.setDeleted(false);
 
                     String catName = (String) (itm.get("categoryName") != null ? itm.get("categoryName") : itm.get("category"));
                     if (catName == null || catName.trim().isEmpty()) {
@@ -352,6 +374,20 @@ public class ActivationService {
 
                     menuRepository.save(item);
                 }
+                menuRepository.flush();
+
+                // Permanently hard-delete items absent from incoming itemsList
+                for (MenuItem ext : existingDbItems) {
+                    if (ext.getName() != null && ext.getName().startsWith("↳ ")) continue;
+                    String extCode = ext.getShortCode() != null ? ext.getShortCode().trim().toUpperCase() : "";
+                    String extName = ext.getName() != null ? ext.getName().trim().toLowerCase() : "";
+                    boolean stillExists = (!extCode.isEmpty() && incomingCodes.contains(extCode))
+                                      || (!extName.isEmpty() && incomingNames.contains(extName));
+                    if (!stillExists) {
+                        try { menuRepository.delete(ext); } catch (Exception ignored) {}
+                    }
+                }
+                menuRepository.flush();
             }
 
             // 9. Seed Waiter accounts from config (only if not already in DB from admin panel)
@@ -402,6 +438,51 @@ public class ActivationService {
         } finally {
             TenantContext.clear();
         }
+    }
+
+    /**
+     * SAFE periodic refresh — fetches the latest config from the Cloud Gateway
+     * and applies it via syncCloudConfiguration(), which upserts menu/tables/
+     * waiters only. Unlike activateSystem(), this NEVER deletes orders, KOTs,
+     * customers, or the ADMIN/KITCHEN user accounts. This is the method the
+     * background scheduler (CloudSyncService) should call every cycle —
+     * activateSystem() must only ever run once, during initial activation.
+     */
+    @Transactional
+    public void refreshFromCloud(String activationCode, String gatewayUrl) throws Exception {
+        if (activationCode == null || activationCode.trim().isEmpty()) {
+            throw new IllegalArgumentException("Activation code cannot be empty");
+        }
+        if (gatewayUrl == null || gatewayUrl.trim().isEmpty()) {
+            throw new IllegalArgumentException("Cloud Gateway URL cannot be empty");
+        }
+
+        String base = gatewayUrl.trim();
+        while (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        String url;
+        if (base.endsWith("/activate")) {
+            url = base + "?code=" + activationCode.trim();
+        } else {
+            url = base + "/activate?code=" + activationCode.trim();
+        }
+
+        RestTemplate restTemplate = new RestTemplate();
+        Map<String, Object> config;
+        try {
+            config = restTemplate.getForObject(url, Map.class);
+        } catch (Exception e) {
+            // Cloud unreachable — silently skip this cycle, local data stays untouched
+            return;
+        }
+
+        if (config == null || config.containsKey("error")) {
+            return;
+        }
+
+        // Delegate to the existing SAFE upsert-only sync method
+        syncCloudConfiguration(config);
     }
 
     /**
@@ -550,7 +631,25 @@ public class ActivationService {
             List<Map<String, Object>> itemsList = (List<Map<String, Object>>) config.get("menuItems");
             // Treat an explicitly empty list as "delete all" (user cleared the menu)
             if (itemsList != null) {
-                List<MenuItem> allDbItems = menuRepository.findByRestaurantId(restaurantId);
+                List<MenuItem> allDbItems = new ArrayList<>(menuRepository.findByRestaurantId(restaurantId));
+                try {
+                    Restaurant r = restaurantRepository.findById(restaurantId)
+                            .or(() -> restaurantRepository.findByRestaurantId(restaurantId))
+                            .orElse(null);
+                    if (r != null) {
+                        UUID altId = (r.getId() != null && !r.getId().equals(restaurantId)) ? r.getId()
+                                  : (r.getRestaurantId() != null && !r.getRestaurantId().equals(restaurantId)) ? r.getRestaurantId() : null;
+                        if (altId != null) {
+                            List<MenuItem> altItems = menuRepository.findByRestaurantId(altId);
+                            for (MenuItem alt : altItems) {
+                                if (allDbItems.stream().noneMatch(m -> m.getId() != null && m.getId().equals(alt.getId()))) {
+                                    allDbItems.add(alt);
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {}
+
                 Set<String> incomingCodes = new HashSet<>();
                 Set<String> incomingNames = new HashSet<>();
 
@@ -613,7 +712,7 @@ public class ActivationService {
                 }
                 menuRepository.flush();
 
-                // Hard-delete items removed from web admin (full replace semantics)
+                // Hard-delete items removed from web admin (full replace semantics across all ID aliases)
                 for (MenuItem ext : allDbItems) {
                     if (ext.getName() != null && ext.getName().startsWith("↳ ")) continue;
                     String extCode = ext.getShortCode() != null ? ext.getShortCode().trim().toUpperCase() : "";
@@ -621,38 +720,88 @@ public class ActivationService {
                     boolean stillExists = (!extCode.isEmpty() && incomingCodes.contains(extCode))
                                       || (!extName.isEmpty() && incomingNames.contains(extName));
                     if (!stillExists) {
-                        ext.setDeleted(true);
-                        ext.setAvailable(false);
-                        menuRepository.save(ext);
+                        menuRepository.delete(ext);
                     }
                 }
                 menuRepository.flush();
             }
 
             // 3b. Sync Addon Items (AddonItemRepository)
-            List<Map<String, Object>> incomingGroups = (List<Map<String, Object>>) config.get("modifierGroups");
-            Set<String> incomingAddonNames = new HashSet<>();
-            if (incomingGroups != null) {
-                for (Map<String, Object> grp : incomingGroups) {
-                    List<Map<String, Object>> optionsList = (List<Map<String, Object>>) grp.get("options");
-                    if (optionsList != null) {
-                        for (Map<String, Object> optMap : optionsList) {
-                            if (optMap.get("name") != null) {
-                                String optName = optMap.get("name").toString().trim();
-                                if (!optName.isEmpty()) {
-                                    incomingAddonNames.add(optName.toLowerCase());
-                                    
-                                    BigDecimal optPrice = optMap.get("price") != null ? new BigDecimal(optMap.get("price").toString()) : BigDecimal.ZERO;
-                                    com.smartdine.coreheart.AddonItem existing = addonItemRepository.findByRestaurantId(restaurantId).stream()
-                                        .filter(a -> a.getName() != null && a.getName().trim().equalsIgnoreCase(optName))
-                                        .findFirst()
-                                        .orElse(null);
-                                    if (existing == null) {
-                                        existing = new com.smartdine.coreheart.AddonItem(restaurantId, optName, optPrice);
+            List<Map<String, Object>> incomingAddons = (List<Map<String, Object>>) config.get("addons");
+            if (incomingAddons != null) {
+                Set<String> incomingNames = new HashSet<>();
+                List<com.smartdine.coreheart.AddonItem> existingAddons = new ArrayList<>(addonItemRepository.findByRestaurantId(restaurantId));
+                try {
+                    Restaurant r = restaurantRepository.findById(restaurantId)
+                            .or(() -> restaurantRepository.findByRestaurantId(restaurantId))
+                            .orElse(null);
+                    if (r != null) {
+                        UUID altId = (r.getId() != null && !r.getId().equals(restaurantId)) ? r.getId()
+                                  : (r.getRestaurantId() != null && !r.getRestaurantId().equals(restaurantId)) ? r.getRestaurantId() : null;
+                        if (altId != null) {
+                            List<com.smartdine.coreheart.AddonItem> altAddons = addonItemRepository.findByRestaurantId(altId);
+                            for (com.smartdine.coreheart.AddonItem alt : altAddons) {
+                                if (existingAddons.stream().noneMatch(a -> a.getId() != null && a.getId().equals(alt.getId()))) {
+                                    existingAddons.add(alt);
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {}
+
+                for (Map<String, Object> addonMap : incomingAddons) {
+                    if (addonMap.get("name") != null) {
+                        String name = addonMap.get("name").toString().trim();
+                        if (!name.isEmpty()) {
+                            incomingNames.add(name.toLowerCase());
+                            BigDecimal price = addonMap.get("price") != null ? new BigDecimal(addonMap.get("price").toString()) : BigDecimal.ZERO;
+                            boolean available = addonMap.get("available") != null ? Boolean.parseBoolean(addonMap.get("available").toString())
+                                              : addonMap.get("isAvailable") != null ? Boolean.parseBoolean(addonMap.get("isAvailable").toString()) : true;
+
+                            com.smartdine.coreheart.AddonItem existing = existingAddons.stream()
+                                .filter(a -> a.getName() != null && a.getName().trim().equalsIgnoreCase(name))
+                                .findFirst()
+                                .orElse(null);
+                            if (existing == null) {
+                                existing = new com.smartdine.coreheart.AddonItem(restaurantId, name, price);
+                            }
+                            existing.setPrice(price);
+                            existing.setAvailable(available);
+                            addonItemRepository.save(existing);
+                        }
+                    }
+                }
+
+                // Remove local addons that were deleted on cloud (true mirror across all ID aliases)
+                for (com.smartdine.coreheart.AddonItem ext : existingAddons) {
+                    if (ext.getName() != null && !incomingNames.contains(ext.getName().trim().toLowerCase())) {
+                        try { addonItemRepository.delete(ext); } catch (Exception ignored) {}
+                    }
+                }
+                addonItemRepository.flush();
+            } else {
+                // Legacy fallback: Extract from modifierGroups options
+                List<Map<String, Object>> incomingGroups = (List<Map<String, Object>>) config.get("modifierGroups");
+                if (incomingGroups != null) {
+                    for (Map<String, Object> grp : incomingGroups) {
+                        List<Map<String, Object>> optionsList = (List<Map<String, Object>>) grp.get("options");
+                        if (optionsList != null) {
+                            for (Map<String, Object> optMap : optionsList) {
+                                if (optMap.get("name") != null) {
+                                    String optName = optMap.get("name").toString().trim();
+                                    if (!optName.isEmpty()) {
+                                        BigDecimal optPrice = optMap.get("price") != null ? new BigDecimal(optMap.get("price").toString()) : BigDecimal.ZERO;
+                                        com.smartdine.coreheart.AddonItem existing = addonItemRepository.findByRestaurantId(restaurantId).stream()
+                                            .filter(a -> a.getName() != null && a.getName().trim().equalsIgnoreCase(optName))
+                                            .findFirst()
+                                            .orElse(null);
+                                        if (existing == null) {
+                                            existing = new com.smartdine.coreheart.AddonItem(restaurantId, optName, optPrice);
+                                        }
+                                        existing.setPrice(optPrice);
+                                        existing.setAvailable(true);
+                                        addonItemRepository.save(existing);
                                     }
-                                    existing.setPrice(optPrice);
-                                    existing.setAvailable(true);
-                                    addonItemRepository.save(existing);
                                 }
                             }
                         }
@@ -767,122 +916,27 @@ public class ActivationService {
      */
     @Transactional
     public void setupManagerAccount(String username, String password, String pin) {
-        System.out.println("🤖 [setupManagerAccount] Starting credentials setup for: " + username);
-        UUID restaurantId = TenantContext.getRestaurantId();
-        if (restaurantId == null) {
-            SystemConfig config = systemConfigRepository.findAll().stream().findFirst()
-                    .orElseThrow(() -> new IllegalStateException("System must be activated before setting up manager account"));
-            restaurantId = config.getRestaurantId();
-        }
+        SystemConfig config = systemConfigRepository.findAll().stream().findFirst()
+                .orElseThrow(() -> new IllegalStateException("System must be activated before setting up manager account"));
 
-        System.out.println("🤖 [setupManagerAccount] Resolved restaurantId: " + restaurantId);
-        TenantContext.setRestaurantId(restaurantId);
+        TenantContext.setRestaurantId(config.getRestaurantId());
         try {
-            // UPSERT: find existing ADMIN user for this restaurant or create a new one.
-            // This prevents "username already exists" errors on re-activation and ensures
-            // that logout → login always works with the credentials set in the wizard.
-            final UUID finalRestaurantId = restaurantId;
-            AppUser admin = userRepository.findByRestaurantIdAndRole(finalRestaurantId, UserRole.ADMIN)
-                    .stream()
-                    .findFirst()
-                    .orElseGet(() -> userRepository.findByUsernameIgnoreCase(username.trim()).orElse(new AppUser()));
-
-            admin.setRestaurantId(restaurantId);
+            // Save admin user
+            AppUser admin = new AppUser();
+            admin.setRestaurantId(config.getRestaurantId());
             admin.setUsername(username.trim());
             admin.setPassword(passwordEncoder.encode(password));
             admin.setRole(UserRole.ADMIN);
-            if (admin.getFullName() == null || admin.getFullName().isBlank()) {
-                admin.setFullName("SaaS Restaurant Owner");
-            }
+            admin.setFullName("SaaS Restaurant Owner");
             admin.setPin(pin.trim());
             admin.setActive(true);
-
-            System.out.println("🤖 [setupManagerAccount] Upserting admin user '" + username.trim() + "' to database...");
-            AppUser saved = userRepository.save(admin);
-            System.out.println("🤖 [setupManagerAccount] Saved admin user ID: " + saved.getId());
+            userRepository.save(admin);
 
             // Trigger mDNS broadcast service
-            try {
-                mdnsService.registerService(restaurantId);
-            } catch (Exception mdnsEx) {
-                System.err.println("🤖 [setupManagerAccount] JmDNS warning (non-fatal): " + mdnsEx.getMessage());
-            }
+            mdnsService.registerService(config.getRestaurantId());
 
-        } catch (Exception e) {
-            System.err.println("🤖 [setupManagerAccount] FATAL ERROR saving admin user: " + e.getMessage());
-            e.printStackTrace();
-            throw e;
         } finally {
             TenantContext.clear();
-        }
-    }
-
-    /**
-     * Multi-Alias Offline Credential Seeder.
-     * Seeds administrator user records locally under Email Address, Restaurant Name,
-     * and Phone Number aliases with synchronized BCrypt password hash.
-     */
-    @Transactional
-    public void seedLocalAdminAliases(UUID restaurantId, String restaurantName, String adminUsername, String adminPasswordHash, String adminPhone, String adminFullName) {
-        String pwdHash = (adminPasswordHash != null && !adminPasswordHash.isBlank())
-                ? adminPasswordHash
-                : passwordEncoder.encode("123456");
-        String fullName = (adminFullName != null && !adminFullName.isBlank()) ? adminFullName : "SaaS Restaurant Owner";
-
-        // Alias 1: Primary Email / Username (e.g. adithyanvijayan21644@gmail.com)
-        if (adminUsername != null && !adminUsername.trim().isEmpty()) {
-            String targetUser = adminUsername.trim();
-            AppUser u1 = userRepository.findByUsernameIgnoreCase(targetUser).orElse(new AppUser());
-            u1.setRestaurantId(restaurantId);
-            u1.setUsername(targetUser);
-            u1.setPassword(pwdHash);
-            u1.setRole(UserRole.ADMIN);
-            u1.setPhone(adminPhone);
-            u1.setFullName(fullName);
-            if (u1.getPin() == null) u1.setPin("1234");
-            u1.setActive(true);
-            userRepository.save(u1);
-            System.out.println("✅ [ActivationService] Seeded Admin Email/Username Alias: " + targetUser);
-        }
-
-        // Alias 2: Restaurant Name (e.g. Kerala Foods)
-        if (restaurantName != null && !restaurantName.trim().isEmpty()) {
-            String targetRestName = restaurantName.trim();
-            if (adminUsername == null || !targetRestName.equalsIgnoreCase(adminUsername.trim())) {
-                AppUser u2 = userRepository.findByUsernameIgnoreCase(targetRestName).orElse(new AppUser());
-                u2.setRestaurantId(restaurantId);
-                u2.setUsername(targetRestName);
-                u2.setPassword(pwdHash);
-                u2.setRole(UserRole.ADMIN);
-                u2.setPhone(adminPhone);
-                u2.setFullName(fullName);
-                if (u2.getPin() == null) u2.setPin("1234");
-                u2.setActive(true);
-                userRepository.save(u2);
-                System.out.println("✅ [ActivationService] Seeded Admin Restaurant Name Alias: " + targetRestName);
-            }
-        }
-    }
-
-    /**
-     * DTO-based activation pipeline for offline POS handshake.
-     */
-    @Transactional
-    public boolean activateSystem(com.smartdine.dto.RestaurantConfigDTO dto) {
-        if (dto == null || dto.getRestaurantId() == null) return false;
-        try {
-            seedLocalAdminAliases(
-                dto.getRestaurantId(),
-                dto.getRestaurantName(),
-                dto.getAdminUsername(),
-                dto.getAdminPasswordHash(),
-                dto.getAdminPhone(),
-                dto.getAdminFullName()
-            );
-            return true;
-        } catch (Exception e) {
-            System.err.println("❌ [ActivationService] Failed DTO activation seeding: " + e.getMessage());
-            return false;
         }
     }
 

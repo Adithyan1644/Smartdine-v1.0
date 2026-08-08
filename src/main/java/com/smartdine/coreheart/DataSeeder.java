@@ -79,15 +79,15 @@ public class DataSeeder implements CommandLineRunner {
 
             final String syncCode = config.getActivationCode();
             if (syncCode != null && !syncCode.trim().isEmpty()) {
-                Thread.ofVirtual().start(() -> {
-                    try {
-                        System.out.println("🔄 [DataSeeder] Auto-syncing real Cloud SQL data for " + syncCode + "...");
-                        activationService.activateSystem(syncCode.trim(), "https://smartdine-saas.ew.r.appspot.com/api/public/provision");
-                        System.out.println("✅ [DataSeeder] Real Cloud SQL data auto-synced successfully on JavaFX boot!");
-                    } catch (Exception e) {
-                        System.err.println("⚠️ [DataSeeder] Cloud auto-sync skipped (offline/cached): " + e.getMessage());
-                    }
-                });
+            	Thread.ofVirtual().start(() -> {
+            	    try {
+            	        System.out.println("🔄 [DataSeeder] Auto-syncing real Cloud SQL data for " + syncCode + "...");
+            	        activationService.refreshFromCloud(syncCode.trim(), "https://smartdine-saas.ew.r.appspot.com/api/public/provision");
+            	        System.out.println("✅ [DataSeeder] Real Cloud SQL data auto-synced successfully on JavaFX boot!");
+            	    } catch (Exception e) {
+            	        System.err.println("⚠️ [DataSeeder] Cloud auto-sync skipped (offline/cached): " + e.getMessage());
+            	    }
+            	});
             }
         }
 

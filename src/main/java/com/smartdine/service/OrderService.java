@@ -242,14 +242,30 @@ public class OrderService {
         return orderRepository.save(order);
     }
 
+    @Autowired
+    private RestaurantSettingsRepository restaurantSettingsRepository;
+
+    @Autowired
+    private SystemConfigRepository systemConfigRepository;
+
     private void updateOrderBilling(Order order, BigDecimal additionalAmount) {
         BigDecimal newSubTotal = order.getSubTotal().add(additionalAmount);
         order.setSubTotal(newSubTotal);
 
-        // 5% total tax (2.5% CGST + 2.5% SGST)
-        BigDecimal taxRate = BigDecimal.valueOf(0.025);
-        BigDecimal cgst = newSubTotal.multiply(taxRate);
-        BigDecimal sgst = newSubTotal.multiply(taxRate);
+        UUID resId = order.getRestaurantId() != null ? order.getRestaurantId() : TenantContext.getRestaurantId();
+        com.smartdine.coreheart.RestaurantSettings settings = resId != null ? restaurantSettingsRepository.findByRestaurantId(resId).orElse(null) : null;
+        com.smartdine.coreheart.SystemConfig config = systemConfigRepository.findAll().stream().findFirst().orElse(null);
+        boolean taxEnabled = (settings != null && settings.isTaxEnabled());
+
+        BigDecimal cgst = BigDecimal.ZERO;
+        BigDecimal sgst = BigDecimal.ZERO;
+
+        if (taxEnabled) {
+            double cgstRateVal = (config != null && config.getCgstRate() != null) ? config.getCgstRate().doubleValue() / 100.0 : ((settings != null ? settings.getTaxRatePercentage() : 5.0) / 200.0);
+            double sgstRateVal = (config != null && config.getSgstRate() != null) ? config.getSgstRate().doubleValue() / 100.0 : ((settings != null ? settings.getTaxRatePercentage() : 5.0) / 200.0);
+            cgst = newSubTotal.multiply(BigDecimal.valueOf(cgstRateVal));
+            sgst = newSubTotal.multiply(BigDecimal.valueOf(sgstRateVal));
+        }
 
         order.setCgst(cgst);
         order.setSgst(sgst);

@@ -74,6 +74,7 @@ public class UiLauncher extends Application {
         });
 
         primaryStage.setTitle(title);
+        applyAppIcon(primaryStage);
         primaryStage.setX(bounds.getMinX());
         primaryStage.setY(bounds.getMinY());
         primaryStage.setWidth(bounds.getWidth());
@@ -91,6 +92,13 @@ public class UiLauncher extends Application {
                 System.out.println("[UiLauncher] Version check trigger note: " + e.getMessage());
             }
         });
+    }
+
+    public static void applyAppIcon(Stage stage) {
+        if (stage == null) return;
+        try {
+            stage.getIcons().clear();
+        } catch (Exception ignored) {}
     }
 
     @Override

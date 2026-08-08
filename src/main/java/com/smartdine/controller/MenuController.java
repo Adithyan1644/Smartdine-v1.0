@@ -95,4 +95,12 @@ public class MenuController {
     public MenuItem toggleTodaysMenu(@PathVariable UUID id, @RequestParam boolean active) {
         return menuService.toggleTodaysMenu(id, active);
     }
+
+    // 6. Delete Menu Item
+    @DeleteMapping("/items/{id}")
+    public org.springframework.http.ResponseEntity<?> deleteMenuItem(@PathVariable String id) {
+        return menuService.deleteItem(id)
+                ? org.springframework.http.ResponseEntity.ok().build()
+                : org.springframework.http.ResponseEntity.notFound().build();
+    }
 }

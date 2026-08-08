@@ -58,12 +58,14 @@ public class AuthService {
 
         // 1. Try lookup by exact username / email
         AppUser user = userRepository.findByUsernameIgnoreCase(targetCred).orElse(null);
+        boolean isExplicitMatch = user != null;
 
         // 2. Try lookup by Phone Number
         if (user == null) {
             user = userRepository.findAll().stream()
                     .filter(u -> u.getPhone() != null && u.getPhone().trim().equalsIgnoreCase(targetCred))
                     .findFirst().orElse(null);
+            isExplicitMatch = user != null;
         }
 
         // 3. Try lookup by Restaurant Name
@@ -74,6 +76,7 @@ public class AuthService {
                 user = userRepository.findByRestaurantIdAndRole(restUuid, UserRole.ADMIN)
                         .stream().findFirst()
                         .orElseGet(() -> userRepository.findByRestaurantId(restUuid).stream().findFirst().orElse(null));
+                isExplicitMatch = user != null;
             }
         }
 
@@ -91,37 +94,23 @@ public class AuthService {
                 user = userRepository.findByRestaurantIdAndRole(restUuid, UserRole.ADMIN)
                         .stream().findFirst()
                         .orElseGet(() -> userRepository.findByRestaurantId(restUuid).stream().findFirst().orElse(null));
+                isExplicitMatch = user != null;
             }
         }
 
-        // 5. Fallback: search all users by username or phone
+        // 5. Flexible Fallback: search all users by username, phone, full name, or email prefix
         if (user == null) {
             user = userRepository.findAll().stream()
                     .filter(u -> (u.getUsername() != null && u.getUsername().trim().equalsIgnoreCase(targetCred)) ||
-                                 (u.getPhone() != null && u.getPhone().trim().equalsIgnoreCase(targetCred)))
+                                 (u.getPhone() != null && u.getPhone().trim().equalsIgnoreCase(targetCred)) ||
+                                 (u.getFullName() != null && u.getFullName().trim().equalsIgnoreCase(targetCred)) ||
+                                 (u.getUsername() != null && u.getUsername().contains("@") && u.getUsername().split("@")[0].equalsIgnoreCase(targetCred)))
                     .findFirst().orElse(null);
-        }
-
-        // 6. LOCAL BILLER STATION FALLBACK: If still not found, try the ADMIN user of the
-        //    currently activated restaurant (from SystemConfig). This covers the case where
-        //    the operator sets a local username during setup (e.g. "Test1") that doesn't
-        //    match the cloud email/phone, and then logs out and tries to log back in.
-        if (user == null) {
-            var activeConfig = systemConfigRepository.findAll().stream().findFirst().orElse(null);
-            if (activeConfig != null && activeConfig.getRestaurantId() != null) {
-                UUID activeRestId = activeConfig.getRestaurantId();
-                user = userRepository.findByRestaurantIdAndRole(activeRestId, UserRole.ADMIN)
-                        .stream().findFirst()
-                        .orElseGet(() -> userRepository.findByRestaurantId(activeRestId)
-                                .stream().findFirst().orElse(null));
-                if (user != null) {
-                    System.out.println("[AuthService] Resolved user via active SystemConfig restaurantId: " + activeRestId);
-                }
-            }
+            isExplicitMatch = user != null;
         }
 
         if (user == null) {
-            throw new RuntimeException("Account not found. Please check your User ID, Phone Number, Restaurant Name, or Sync Code.");
+            throw new RuntimeException("Account '" + targetCred + "' not found. Please check your User ID, Phone Number, Restaurant Name, or Sync Code.");
         }
 
         boolean matchesBcrypt = user.getPassword() != null && passwordEncoder.matches(rawPassword, user.getPassword());
@@ -152,6 +141,9 @@ public class AuthService {
             response.setSyncCode(syncCode);
             return response;
         } else {
+            if (!isExplicitMatch) {
+                throw new RuntimeException("Account '" + targetCred + "' not found on this Biller Station. Please check your Username, Phone Number, or Sync Code.");
+            }
             throw new RuntimeException("Incorrect Password. Please try again.");
         }
     }
@@ -441,9 +433,14 @@ public class AuthService {
         // 3. Auto-Seed Complete Baseline Configuration (Tables, Categories, Menu Items, Waiters)
         cloudDatabaseSeederService.seedDefaultRestaurantData(newRestId);
 
+        String token = jwtUtil.generateToken(username.trim(), UserRole.ADMIN.name(), newRestId);
+
         return java.util.Map.of(
+            "success", true,
             "syncCode", finalSyncCode,
-            "restaurantId", newRestId.toString()
+            "restaurantId", newRestId.toString(),
+            "restaurantName", restaurantName,
+            "token", token
         );
     }
 }

@@ -53,8 +53,36 @@ public class ReceiptPrintService {
 
         if ("DELIVERY".equalsIgnoreCase(type)) {
             sb.append("Type: DELIVERY\n");
+            String cName = orderDetails.getOrDefault("customerName", "").toString();
+            String cPhone = orderDetails.getOrDefault("customerPhone", "").toString();
+            String address = orderDetails.getOrDefault("deliveryAddress", "").toString();
+            if (address.isEmpty() && orderDetails.containsKey("address")) {
+                address = orderDetails.get("address").toString();
+            }
+            if (address.isEmpty() && orderDetails.containsKey("tableName")) {
+                String tbl = orderDetails.get("tableName").toString();
+                if (tbl.startsWith("Delivery: ")) {
+                    address = tbl.substring("Delivery: ".length()).trim();
+                }
+            }
+
+            if (!cName.isEmpty()) sb.append("Cust : ").append(cName).append("\n");
+            if (!cPhone.isEmpty()) sb.append("Phone: ").append(cPhone).append("\n");
+            if (!address.isEmpty()) {
+                sb.append("Addr : ");
+                List<String> wrappedLines = wrapTextToLines(address, maxCols - 7);
+                for (int i = 0; i < wrappedLines.size(); i++) {
+                    if (i == 0) {
+                        sb.append(wrappedLines.get(0)).append("\n");
+                    } else {
+                        sb.append("       ").append(wrappedLines.get(i)).append("\n");
+                    }
+                }
+            }
         } else if ("PICKUP".equalsIgnoreCase(type)) {
             sb.append("Type: PICKUP\n");
+            String cName = orderDetails.getOrDefault("customerName", "").toString();
+            if (!cName.isEmpty()) sb.append("Cust : ").append(cName).append("\n");
         } else {
             String tableName = orderDetails.getOrDefault("tableName", "T-01").toString();
             String waiter = orderDetails.getOrDefault("waiterName", "Staff").toString();

@@ -15,6 +15,7 @@ public class RestaurantConfigDTO implements Serializable {
     private List<String> categories;
     private List<Map<String, Object>> menuItems;
     private List<Map<String, Object>> modifierGroups;
+    private List<Map<String, Object>> addons;
 
     private String syncCode;
     private String adminUsername;
@@ -65,4 +66,7 @@ public class RestaurantConfigDTO implements Serializable {
 
     public List<Map<String, Object>> getModifierGroups() { return modifierGroups; }
     public void setModifierGroups(List<Map<String, Object>> modifierGroups) { this.modifierGroups = modifierGroups; }
+
+    public List<Map<String, Object>> getAddons() { return addons; }
+    public void setAddons(List<Map<String, Object>> addons) { this.addons = addons; }
 }

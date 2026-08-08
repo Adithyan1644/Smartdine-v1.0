@@ -21,14 +21,35 @@ public class KitchenController {
     @Autowired
     private SimpMessagingTemplate messagingTemplate;
 
+    @Autowired
+    private com.smartdine.repository.RestaurantRepository restaurantRepository;
+
     @GetMapping("/active")
-    public ResponseEntity<List<KOT>> getActiveKOTs(@RequestParam(required = false) String restaurantId) {
+    public ResponseEntity<List<KOT>> getActiveKOTs(
+            @RequestParam(required = false) String restaurantId,
+            @RequestParam(required = false) String syncCode,
+            @RequestHeader(name = "X-Sync-Code", required = false) String syncHeader) {
+        
         UUID restUuid = null;
-        if (restaurantId != null && !restaurantId.trim().isEmpty()) {
+        String codeToUse = (syncCode != null && !syncCode.trim().isEmpty()) ? syncCode.trim() : (syncHeader != null ? syncHeader.trim() : null);
+
+        if (codeToUse != null && !codeToUse.isEmpty()) {
+            try {
+                com.smartdine.coreheart.Restaurant r = restaurantRepository.findByBillerSyncCode(codeToUse)
+                        .or(() -> restaurantRepository.findBySyncCodeAndIsDeletedFalse(codeToUse))
+                        .orElse(null);
+                if (r != null) {
+                    restUuid = r.getRestaurantId() != null ? r.getRestaurantId() : r.getId();
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (restUuid == null && restaurantId != null && !restaurantId.trim().isEmpty()) {
             try {
                 restUuid = UUID.fromString(restaurantId.trim());
             } catch (Exception ignored) {}
         }
+
         if (restUuid == null) {
             restUuid = TenantContext.getRestaurantId();
         }

@@ -377,9 +377,16 @@ public class ActivationApiController {
 
     @PostMapping("/save-config")
     public ResponseEntity<?> saveConfig(@RequestBody Map<String, Object> request) {
+        org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            return ResponseEntity.status(401).body(Map.of("success", false, "error", "Unauthorized: Valid authentication token is required to save restaurant configuration"));
+        }
+
         try {
             String syncCode = request.get("syncCode") != null ? request.get("syncCode").toString() : "";
             String restId = request.get("restaurantId") != null ? request.get("restaurantId").toString() : null;
+
+            UUID contextTenantId = com.smartdine.coreheart.TenantContext.getRestaurantId();
 
             // Resolve real UUID by syncCode or restaurantName via database query
             if (syncCode != null && !syncCode.trim().isEmpty()) {
@@ -409,8 +416,21 @@ public class ActivationApiController {
                 } catch (Exception ignored) {}
             }
 
+            // Fallback to authenticated tenant ID if restId was omitted or symbolic
+            if ((restId == null || restId.isEmpty() || restId.startsWith("rest-")) && contextTenantId != null) {
+                restId = contextTenantId.toString();
+            }
+
+            // Reject cross-tenant attempts to overwrite another restaurant's config
+            if (contextTenantId != null && restId != null && !restId.isEmpty()) {
+                boolean isDefaultFallbackContext = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11".equalsIgnoreCase(contextTenantId.toString());
+                if (!isDefaultFallbackContext && !contextTenantId.toString().equalsIgnoreCase(restId)) {
+                    return ResponseEntity.status(403).body(Map.of("success", false, "error", "Forbidden: Cannot modify configuration for another tenant"));
+                }
+            }
+
             if (restId == null || restId.isEmpty() || restId.startsWith("rest-")) {
-                restId = "9183522f-e62b-4cdc-b852-cac4b347cbc8";
+                return ResponseEntity.badRequest().body(Map.of("success", false, "error", "Invalid or unresolvable restaurant ID. Configuration update rejected."));
             }
 
             String restName = request.get("restaurantName") != null ? request.get("restaurantName").toString() : null;
@@ -833,55 +853,56 @@ public class ActivationApiController {
     }
 
     @GetMapping("/analytics")
-    public ResponseEntity<?> getAnalytics(@RequestParam(required = false) String code) {
+    public ResponseEntity<?> getAnalytics(
+            @RequestParam(required = false) String code,
+            @RequestParam(required = false) String restaurantName,
+            @RequestHeader(name = "X-Sync-Code", required = false) String headerCode) {
         java.util.UUID restaurantId = null;
+        String effectiveCode = code != null && !code.trim().isEmpty() ? code.trim() : headerCode;
 
         // 1. Try resolving restaurantId from sync code
-        if (code != null && !code.trim().isEmpty()) {
+        if (effectiveCode != null && !effectiveCode.trim().isEmpty()) {
             java.util.Optional<com.smartdine.coreheart.Restaurant> restOpt = restaurantRepository
-                    .findBySyncCodeAndIsDeletedFalse(code.trim());
+                    .findBySyncCodeAndIsDeletedFalse(effectiveCode.trim())
+                    .or(() -> restaurantRepository.findByBillerSyncCode(effectiveCode.trim()));
             if (restOpt.isPresent()) {
-                restaurantId = restOpt.get().getRestaurantId();
+                com.smartdine.coreheart.Restaurant r = restOpt.get();
+                restaurantId = r.getId() != null ? r.getId() : r.getRestaurantId();
             }
         }
 
-        // 2. Fall back to system config
-        if (restaurantId == null) {
-            java.util.Optional<com.smartdine.coreheart.SystemConfig> configOpt = activationService.getSystemConfig();
-            if (configOpt.isPresent()) {
-                restaurantId = configOpt.get().getRestaurantId();
+        // 2. Try resolving restaurantId from restaurantName
+        if (restaurantId == null && restaurantName != null && !restaurantName.trim().isEmpty()) {
+            java.util.Optional<com.smartdine.coreheart.Restaurant> restOpt = restaurantRepository
+                    .findByNameIgnoreCase(restaurantName.trim());
+            if (restOpt.isPresent()) {
+                com.smartdine.coreheart.Restaurant r = restOpt.get();
+                restaurantId = r.getId() != null ? r.getId() : r.getRestaurantId();
             }
         }
 
-        // 3. Fall back to TenantContext or default ID
+        // 3. Try TenantContext
         if (restaurantId == null) {
             restaurantId = com.smartdine.coreheart.TenantContext.getRestaurantId();
         }
+
+        // 4. Strict Multi-Tenant Guard: Never silently substitute another tenant's orders or default UUID
         if (restaurantId == null) {
-            restaurantId = java.util.UUID.fromString("28e79200-0000-4000-a000-000000000001");
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "Could not resolve restaurant — provide a valid sync code or authenticated session"));
         }
 
-        // 4. Query all orders of last 30 days
+        // 4. Query all orders of last 30 days strictly for THIS restaurant
         java.time.LocalDateTime startOfThirtyDaysAgo = java.time.LocalDateTime.now().minusDays(30).withHour(0)
                 .withMinute(0).withSecond(0).withNano(0);
+
         java.util.List<com.smartdine.coreheart.Order> allOrders = orderRepository
-                .findByRestaurantIdAndStartedAtAfter(restaurantId, startOfThirtyDaysAgo);
-
-        if (allOrders.isEmpty()) {
-            // Fallback 1: Try SystemConfig restaurantId if different
-            java.util.Optional<com.smartdine.coreheart.SystemConfig> sysOpt = activationService.getSystemConfig();
-            if (sysOpt.isPresent() && !sysOpt.get().getRestaurantId().equals(restaurantId)) {
-                allOrders = orderRepository.findByRestaurantIdAndStartedAtAfter(sysOpt.get().getRestaurantId(),
-                        startOfThirtyDaysAgo);
-            }
-        }
-
-        if (allOrders.isEmpty()) {
-            // Fallback 2: Retrieve all recent orders for local machine POS demo
-            allOrders = orderRepository.findAll().stream()
-                    .filter(o -> o.getStartedAt() != null && !o.getStartedAt().isBefore(startOfThirtyDaysAgo))
-                    .collect(java.util.stream.Collectors.toList());
-        }
+                .findByRestaurantId(restaurantId).stream()
+                .filter(o -> {
+                    java.time.LocalDateTime dt = o.getStartedAt() != null ? o.getStartedAt() : o.getCreatedAt();
+                    return dt != null && !dt.isBefore(startOfThirtyDaysAgo);
+                })
+                .collect(java.util.stream.Collectors.toList());
 
         // 5. Calculations for different time boundaries
         java.time.LocalDateTime todayStart = java.time.LocalDateTime.now().withHour(0).withMinute(0).withSecond(0)
@@ -1037,8 +1058,9 @@ public class ActivationApiController {
         // Peak hours grouping for today's orders
         int slot8to10 = 0, slot12to2 = 0, slot4to6 = 0, slot7to9 = 0, slot9to11 = 0;
         for (com.smartdine.coreheart.Order o : allOrders) {
-            if (o.getStartedAt().isAfter(todayStart)) {
-                int hour = o.getStartedAt().getHour();
+            java.time.LocalDateTime started = o.getStartedAt() != null ? o.getStartedAt() : o.getCreatedAt();
+            if (started != null && !started.isBefore(todayStart)) {
+                int hour = started.getHour();
                 if (hour >= 8 && hour < 10)
                     slot8to10++;
                 else if (hour >= 12 && hour < 14)
@@ -1079,9 +1101,10 @@ public class ActivationApiController {
 
             java.math.BigDecimal daySales = java.math.BigDecimal.ZERO;
             for (com.smartdine.coreheart.Order o : allOrders) {
-                if (o.getStatus() == com.smartdine.coreheart.OrderStatus.PAID &&
-                        o.getStartedAt().isAfter(dayS) && o.getStartedAt().isBefore(dayE)) {
-                    daySales = daySales.add(o.getGrandTotal());
+                java.time.LocalDateTime started = o.getStartedAt() != null ? o.getStartedAt() : o.getCreatedAt();
+                if (started != null && o.getStatus() == com.smartdine.coreheart.OrderStatus.PAID &&
+                        started.isAfter(dayS) && started.isBefore(dayE)) {
+                    daySales = daySales.add(o.getGrandTotal() != null ? o.getGrandTotal() : java.math.BigDecimal.ZERO);
                 }
             }
             dailyTrend.add(Map.of("name", days[i - 1], "sales", daySales.doubleValue()));
@@ -1094,9 +1117,10 @@ public class ActivationApiController {
             java.time.LocalDateTime wE = todayStart.minusWeeks(i);
             java.math.BigDecimal wSales = java.math.BigDecimal.ZERO;
             for (com.smartdine.coreheart.Order o : allOrders) {
-                if (o.getStatus() == com.smartdine.coreheart.OrderStatus.PAID &&
-                        o.getStartedAt().isAfter(wS) && o.getStartedAt().isBefore(wE)) {
-                    wSales = wSales.add(o.getGrandTotal());
+                java.time.LocalDateTime started = o.getStartedAt() != null ? o.getStartedAt() : o.getCreatedAt();
+                if (started != null && o.getStatus() == com.smartdine.coreheart.OrderStatus.PAID &&
+                        started.isAfter(wS) && started.isBefore(wE)) {
+                    wSales = wSales.add(o.getGrandTotal() != null ? o.getGrandTotal() : java.math.BigDecimal.ZERO);
                 }
             }
             weeklyTrend.add(Map.of("name", "Wk " + (4 - i), "sales", wSales.doubleValue()));
@@ -1113,9 +1137,10 @@ public class ActivationApiController {
 
             java.math.BigDecimal mSales = java.math.BigDecimal.ZERO;
             for (com.smartdine.coreheart.Order o : allOrders) {
-                if (o.getStatus() == com.smartdine.coreheart.OrderStatus.PAID &&
-                        o.getStartedAt().isAfter(mS) && o.getStartedAt().isBefore(mE)) {
-                    mSales = mSales.add(o.getGrandTotal());
+                java.time.LocalDateTime started = o.getStartedAt() != null ? o.getStartedAt() : o.getCreatedAt();
+                if (started != null && o.getStatus() == com.smartdine.coreheart.OrderStatus.PAID &&
+                        started.isAfter(mS) && started.isBefore(mE)) {
+                    mSales = mSales.add(o.getGrandTotal() != null ? o.getGrandTotal() : java.math.BigDecimal.ZERO);
                 }
             }
             monthlyTrend.add(Map.of("name", months[mDate.getMonthValue() - 1], "sales", mSales.doubleValue()));
@@ -1390,6 +1415,12 @@ public class ActivationApiController {
         response.put("billerStatus", isBillerActive ? "ACTIVE" : "DISCONNECTED");
         response.put("isLive", isBillerActive);
         response.put("lastActiveTime", (lastPing != null && lastPing > 0) ? lastPing : now);
+
+        response.put("_debugRestaurantId", restaurantId != null ? restaurantId.toString() : "NULL");
+        response.put("_debugOrderCount", allOrders.size());
+        response.put("_debugEffectiveCode", effectiveCode);
+        response.put("_debugRestaurantName", restaurantName);
+        System.out.println("🔍 [DEBUG] Resolved restaurantId=" + restaurantId + " for code=" + effectiveCode + " (allOrders=" + allOrders.size() + ")");
 
         return ResponseEntity.ok(response);
     }

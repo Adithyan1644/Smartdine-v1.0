@@ -136,16 +136,17 @@ public class ProvisioningController {
 
         // Extract metadata cleanly using safe, dual-aliased JDBC queries for 100% compatibility across consumers
         dto.setAreas(safeQueryForList("SELECT id, name FROM areas WHERE restaurant_id = ?", id1, id2));
-        dto.setTables(safeQueryForList("SELECT id, table_number AS number, table_number AS tableNumber, area_name AS area, area_name AS areaName, capacity, status FROM dining_tables WHERE restaurant_id = ?", id1, id2));
-        List<Map<String, Object>> catMaps = safeQueryForList("SELECT id, name FROM menu_categories WHERE restaurant_id = ?", id1, id2);
+        dto.setTables(safeQueryForList("SELECT id, table_number AS number, table_number AS tableNumber, area_name AS area, area_name AS areaName, capacity, status FROM dining_tables WHERE restaurant_id = ? AND (is_deleted IS NULL OR is_deleted = false)", id1, id2));
+        List<Map<String, Object>> catMaps = safeQueryForList("SELECT id, name FROM menu_categories WHERE restaurant_id = ? AND (is_deleted IS NULL OR is_deleted = false)", id1, id2);
         dto.setMenuCategories(catMaps);
         List<String> catNames = catMaps.stream()
                 .map(m -> m.get("name") != null ? m.get("name").toString() : "")
                 .filter(s -> !s.isEmpty())
                 .collect(java.util.stream.Collectors.toList());
         dto.setCategories(catNames);
-        dto.setMenuItems(safeQueryForList("SELECT id, name, price, short_code AS shortCode, short_code AS code, category_name AS category, category_name AS categoryName, is_available AS status, is_veg AS veg, is_veg AS isVeg FROM menu_items WHERE restaurant_id = ?", id1, id2));
+        dto.setMenuItems(safeQueryForList("SELECT id, name, price, short_code AS shortCode, short_code AS code, category_name AS category, category_name AS categoryName, is_available AS status, is_veg AS veg, is_veg AS isVeg FROM menu_items WHERE restaurant_id = ? AND (is_deleted IS NULL OR is_deleted = false)", id1, id2));
         dto.setModifierGroups(safeQueryForList("SELECT id, name FROM modifier_groups WHERE restaurant_id = ?", id1, id2));
+        dto.setAddons(safeQueryForList("SELECT id, name, price, is_available AS available FROM addon_items WHERE restaurant_id = ?", id1, id2));
 
         com.smartdine.config.DataSourceContextHolder.clear();
         return ResponseEntity.ok(dto);

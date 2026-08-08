@@ -47,6 +47,13 @@ public class UiLoginController {
             errorLabel.setVisible(false);
             errorLabel.setManaged(false);
         }
+        javafx.application.Platform.runLater(() -> {
+            try {
+                if (usernameField != null && usernameField.getScene() != null && usernameField.getScene().getWindow() instanceof javafx.stage.Stage stage) {
+                    com.smartdine.coreheart.UiLauncher.applyAppIcon(stage);
+                }
+            } catch (Exception ignored) {}
+        });
     }
 
     public void setPreFilledUsername(String username) {

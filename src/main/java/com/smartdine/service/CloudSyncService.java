@@ -44,7 +44,13 @@ public class CloudSyncService {
             String syncCode = (String) configList.get(0).get("activation_code");
             if (syncCode == null || syncCode.trim().isEmpty()) return;
 
-            activationService.activateSystem(syncCode.trim(), "https://smartdine-saas.ew.r.appspot.com/api/public/provision");
+            // FIXED: was calling activateSystem() here, which deletes ALL orders,
+            // KOTs, customers, and non-waiter user accounts (including ADMIN)
+            // on every single run. That caused running orders to vanish and
+            // admin logins to fail with "invalid password" after any 60s cycle.
+            // refreshFromCloud() only upserts menu/tables/waiters — it never
+            // touches orders, KOTs, customers, or admin/kitchen accounts.
+            activationService.refreshFromCloud(syncCode.trim(), "https://smartdine-saas.ew.r.appspot.com/api/public/provision");
         } catch (Exception ignored) {}
     }
 
@@ -90,7 +96,7 @@ public class CloudSyncService {
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        
+
         // Retrieve local auth token to validate tenant context on GCP
         try {
             String authToken = jdbcTemplate.queryForObject("SELECT cloud_auth_token FROM system_config LIMIT 1", String.class);
@@ -111,46 +117,119 @@ public class CloudSyncService {
                 continue;
             }
 
+            String eventType = event.get("event_type") != null ? event.get("event_type").toString() : "ORDER_SETTLED";
             String payloadJson = (String) event.get("payload");
 
             try {
-                // Post payload directly to the active Cloud SQL sync endpoint
-                HttpEntity<String> request = new HttpEntity<>(payloadJson, headers);
-                restTemplate.postForEntity(activeGatewayUrl, request, String.class);
+                if ("ADDON_CREATED".equalsIgnoreCase(eventType)) {
+                    com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                    Map<String, Object> pMap = mapper.readValue(payloadJson, Map.class);
+                    String syncCode = pMap.get("syncCode") != null ? pMap.get("syncCode").toString() : "";
+                    if (syncCode.trim().isEmpty()) {
+                        try {
+                            syncCode = jdbcTemplate.queryForObject("SELECT activation_code FROM system_config WHERE is_activated = true LIMIT 1", String.class);
+                        } catch (Exception ignored) {}
+                    }
+                    if (syncCode != null && !syncCode.trim().isEmpty()) {
+                        headers.set("X-Sync-Code", syncCode.trim());
+                    }
+                    String url = "https://smartdine-saas.ew.r.appspot.com/api/addons?syncCode=" 
+                            + java.net.URLEncoder.encode(syncCode != null ? syncCode.trim() : "", java.nio.charset.StandardCharsets.UTF_8);
+                    HttpEntity<String> request = new HttpEntity<>(payloadJson, headers);
+                    restTemplate.postForEntity(url, request, String.class);
+                } else if ("ADDON_DELETED".equalsIgnoreCase(eventType)) {
+                    com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                    Map<String, Object> pMap = mapper.readValue(payloadJson, Map.class);
+                    String name = pMap.get("name") != null ? pMap.get("name").toString() : "";
+                    String restId = pMap.get("restaurantId") != null ? pMap.get("restaurantId").toString() : "";
+                    String syncCode = pMap.get("syncCode") != null ? pMap.get("syncCode").toString() : "";
+                    if (syncCode.trim().isEmpty()) {
+                        try {
+                            syncCode = jdbcTemplate.queryForObject("SELECT activation_code FROM system_config WHERE is_activated = true LIMIT 1", String.class);
+                        } catch (Exception ignored) {}
+                    }
+                    if (syncCode != null && !syncCode.trim().isEmpty()) {
+                        headers.set("X-Sync-Code", syncCode.trim());
+                    }
+                    HttpEntity<String> request = new HttpEntity<>(headers);
+                    try {
+                        String primaryUrl = "https://smartdine-saas.ew.r.appspot.com/api/addons/"
+                                + java.net.URLEncoder.encode(name, java.nio.charset.StandardCharsets.UTF_8)
+                                + "?restaurantId=" + (restId != null ? restId : "")
+                                + "&syncCode=" + java.net.URLEncoder.encode(syncCode != null ? syncCode.trim() : "", java.nio.charset.StandardCharsets.UTF_8);
+                        restTemplate.exchange(primaryUrl, org.springframework.http.HttpMethod.DELETE, request, String.class);
+                    } catch (org.springframework.web.client.HttpStatusCodeException httpEx) {
+                        if (httpEx.getStatusCode().value() == 404 || httpEx.getStatusCode().value() == 400) {
+                            System.out.println("ℹ️ [AddonSync] Cloud delete for '" + name + "' acknowledged (Status: " + httpEx.getStatusCode() + ")");
+                        } else {
+                            throw httpEx;
+                        }
+                    } catch (Exception primaryEx) {
+                        try {
+                            String fallbackUrl = "https://smartdine-saas.ew.r.appspot.com/api/addons/by-name?name="
+                                    + java.net.URLEncoder.encode(name, java.nio.charset.StandardCharsets.UTF_8)
+                                    + "&restaurantId=" + (restId != null ? restId : "")
+                                    + "&syncCode=" + java.net.URLEncoder.encode(syncCode != null ? syncCode.trim() : "", java.nio.charset.StandardCharsets.UTF_8);
+                            restTemplate.exchange(fallbackUrl, org.springframework.http.HttpMethod.DELETE, request, String.class);
+                        } catch (org.springframework.web.client.HttpStatusCodeException httpEx) {
+                            if (httpEx.getStatusCode().value() == 404 || httpEx.getStatusCode().value() == 400) {
+                                System.out.println("ℹ️ [AddonSync] Cloud delete fallback for '" + name + "' acknowledged (Status: " + httpEx.getStatusCode() + ")");
+                            } else {
+                                throw httpEx;
+                            }
+                        }
+                    }
+                } else {
+                    // Post payload directly to the active Cloud SQL sync endpoint (e.g. ORDER_SETTLED)
+                    HttpEntity<String> request = new HttpEntity<>(payloadJson, headers);
+                    restTemplate.postForEntity(activeGatewayUrl, request, String.class);
+                }
 
                 // Update outbox state to prevent duplicate processing
                 jdbcTemplate.update("UPDATE sync_outbox SET synced = true, synced_at = CURRENT_TIMESTAMP WHERE id = ?", eventId);
-                System.out.println("Sync Succeeded: Sent outbox transaction [" + eventId + "] successfully to Google Cloud.");
+                System.out.println("Sync Succeeded: Sent outbox transaction [" + eventId + "] (" + eventType + ") successfully to Google Cloud.");
 
+            } catch (org.springframework.web.client.HttpStatusCodeException httpEx) {
+                if (httpEx.getStatusCode().value() == 400 || httpEx.getStatusCode().value() == 404) {
+                    // Non-retryable client error (400 Bad Request / 404 Not Found) — mark synced=true to clear stuck outbox item
+                    jdbcTemplate.update("UPDATE sync_outbox SET synced = true, synced_at = CURRENT_TIMESTAMP WHERE id = ?", eventId);
+                    System.err.println("Sync Skipped: Outbox transaction [" + eventId + "] (" + eventType + ") returned " + httpEx.getStatusCode() + ". Marked as resolved.");
+                    continue;
+                }
+                System.err.println("Sync Failed: Unable to transmit outbox transaction [" + eventId + "] (" + eventType + "). Connection held for retry: " + httpEx.getMessage());
+                break;
             } catch (Exception e) {
-                System.err.println("Sync Failed: Unable to transmit outbox transaction [" + eventId + "]. Connection held for retry: " + e.getMessage());
+                System.err.println("Sync Failed: Unable to transmit outbox transaction [" + eventId + "] (" + eventType + "). Connection held for retry: " + e.getMessage());
                 break; // Halt queue processing temporarily until connection is recovered
             }
         }
     }
 
-    @Scheduled(fixedDelay = 60000)
-    public void reportLocalIpToCloud() {
+    /**
+     * Generic helper method to enqueue any event into sync_outbox for durable offline-tolerant push.
+     */
+    @Async
+    public void enqueueOutboxEvent(String eventType, Map<String, Object> payloadMap) {
+        if (eventType == null || payloadMap == null) return;
         try {
-            String localIp = InetAddress.getLocalHost().getHostAddress();
-            String restId = null;
-            try {
-                restId = jdbcTemplate.queryForObject("SELECT restaurant_id FROM system_config LIMIT 1", String.class);
-            } catch (Exception ignored) {}
+            jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS sync_outbox (" +
+                    "id UUID PRIMARY KEY, " +
+                    "event_type VARCHAR(50) NOT NULL, " +
+                    "payload TEXT NOT NULL, " +
+                    "synced BOOLEAN DEFAULT false, " +
+                    "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
+                    "synced_at TIMESTAMP)");
 
-            if (restId != null && !restId.trim().isEmpty()) {
-                HttpHeaders headers = new HttpHeaders();
-                headers.setContentType(MediaType.APPLICATION_JSON);
-                headers.set("X-Restaurant-ID", restId.trim());
-
-                HttpEntity<String> request = new HttpEntity<>("", headers);
-                try {
-                    restTemplate.postForEntity(REPORT_IP_URL + "?ip=" + localIp, request, String.class);
-                    System.out.println("📶 [Cloud Sync] Successfully registered local IP (" + localIp + ") on Google Cloud.");
-                } catch (Exception ignored) {}
-            }
+            UUID eventId = UUID.randomUUID();
+            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            String payloadJson = mapper.writeValueAsString(payloadMap);
+            jdbcTemplate.update(
+                    "INSERT INTO sync_outbox (id, event_type, payload, synced, created_at) VALUES (?, ?, ?, false, CURRENT_TIMESTAMP)",
+                    eventId, eventType, payloadJson
+            );
+            System.out.println("✅ [CloudSyncService] Enqueued outbox event [" + eventType + "] with ID " + eventId);
         } catch (Exception e) {
-            System.err.println("⚠️ Cloud Sync: Failed to register local IP on Google Cloud: " + e.getMessage());
+            System.err.println("❌ [CloudSyncService] Error enqueuing outbox event [" + eventType + "]: " + e.getMessage());
         }
     }
 

@@ -22,4 +22,7 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
 
     // For optimization: Fetch only today's orders directly
     List<Order> findByRestaurantIdAndStartedAtAfter(UUID restaurantId, java.time.LocalDateTime startOfToday);
+
+    // Multi-tenant isolation: Fetch all orders for a specific restaurant
+    List<Order> findByRestaurantId(UUID restaurantId);
 }

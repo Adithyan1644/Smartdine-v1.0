@@ -26,6 +26,9 @@ public class SyncApiController {
     @Autowired
     private OrderRepository orderRepository;
 
+    @Autowired
+    private com.smartdine.repository.RestaurantRepository restaurantRepository;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
@@ -34,9 +37,12 @@ public class SyncApiController {
     @PostMapping("/process")
     public ResponseEntity<?> processSyncEvent(
             @RequestParam(name = "type", required = false, defaultValue = "ORDER") String eventType,
+            @RequestParam(name = "code", required = false) String paramCode,
+            @RequestHeader(name = "X-Sync-Code", required = false) String headerCode,
             @RequestBody(required = false) String payloadJson) {
 
-        System.out.println("📶 [Cloud Gateway] Processing incoming sync event of type: " + eventType);
+        String effectiveCode = paramCode != null && !paramCode.trim().isEmpty() ? paramCode.trim() : headerCode;
+        System.out.println("📶 [Cloud Gateway] Processing incoming sync event of type: " + eventType + " (code=" + effectiveCode + ")");
 
         if (payloadJson == null || payloadJson.trim().isEmpty()) {
             return ResponseEntity.ok(Map.of("success", true, "message", "Heartbeat event acknowledged"));
@@ -44,20 +50,15 @@ public class SyncApiController {
 
         try {
             Map<String, Object> payload = objectMapper.readValue(payloadJson, Map.class);
-            UUID restaurantId = null;
-            if (payload.get("restaurantId") != null && !payload.get("restaurantId").toString().trim().isEmpty()) {
-                try {
-                    restaurantId = UUID.fromString(payload.get("restaurantId").toString().trim());
-                } catch (Exception ignored) {}
-            }
+            UUID restaurantId = resolveRestaurantId(payload, effectiveCode);
 
             if ("ORDER".equalsIgnoreCase(eventType) || "ORDER_SETTLED".equalsIgnoreCase(eventType) || "ORDER_CREATED".equalsIgnoreCase(eventType)) {
-                Order order = mapPayloadToOrder(payload);
+                Order order = mapPayloadToOrder(payload, effectiveCode);
                 if (restaurantId != null) {
                     order.setRestaurantId(restaurantId);
                 }
                 orderRepository.save(order);
-                System.out.println("✅ Order [" + order.getOrderNumber() + "] committed to GCP Cloud SQL.");
+                System.out.println("✅ Order [" + order.getOrderNumber() + "] committed to GCP Cloud SQL for restaurant: " + order.getRestaurantId());
             } else if ("MENU_UPDATE".equalsIgnoreCase(eventType) || "MENU".equalsIgnoreCase(eventType)) {
                 System.out.println("Menu update event received on cloud for Restaurant ID: " + restaurantId);
             } else {
@@ -73,9 +74,13 @@ public class SyncApiController {
     }
 
     @PostMapping("/orders")
-    public ResponseEntity<?> syncSingleOrder(@RequestBody Map<String, Object> payload) {
+    public ResponseEntity<?> syncSingleOrder(
+            @RequestParam(name = "code", required = false) String paramCode,
+            @RequestHeader(name = "X-Sync-Code", required = false) String headerCode,
+            @RequestBody Map<String, Object> payload) {
         try {
-            Order order = mapPayloadToOrder(payload);
+            String effectiveCode = paramCode != null && !paramCode.trim().isEmpty() ? paramCode.trim() : headerCode;
+            Order order = mapPayloadToOrder(payload, effectiveCode);
             orderRepository.save(order);
             System.out.println("☁️ GCP Cloud SQL: Successfully archived order " + order.getOrderNumber()
                     + " for Restaurant: " + order.getRestaurantId());
@@ -87,11 +92,15 @@ public class SyncApiController {
     }
 
     @PostMapping("/orders/bulk")
-    public ResponseEntity<?> syncBulkOrders(@RequestBody List<Map<String, Object>> payloads) {
+    public ResponseEntity<?> syncBulkOrders(
+            @RequestParam(name = "code", required = false) String paramCode,
+            @RequestHeader(name = "X-Sync-Code", required = false) String headerCode,
+            @RequestBody List<Map<String, Object>> payloads) {
         try {
+            String effectiveCode = paramCode != null && !paramCode.trim().isEmpty() ? paramCode.trim() : headerCode;
             int count = 0;
             for (Map<String, Object> payload : payloads) {
-                Order order = mapPayloadToOrder(payload);
+                Order order = mapPayloadToOrder(payload, effectiveCode);
                 orderRepository.save(order);
                 count++;
             }
@@ -103,17 +112,38 @@ public class SyncApiController {
         }
     }
 
-    private Order mapPayloadToOrder(Map<String, Object> payload) {
-        Order order = new Order();
-
-        if (payload.get("restaurantId") != null) {
+    private UUID resolveRestaurantId(Map<String, Object> payload, String fallbackCode) {
+        if (payload != null && payload.get("restaurantId") != null && !payload.get("restaurantId").toString().trim().isEmpty()) {
             try {
-                order.setRestaurantId(UUID.fromString(payload.get("restaurantId").toString()));
-            } catch (Exception ignored) {
+                return UUID.fromString(payload.get("restaurantId").toString().trim());
+            } catch (Exception ignored) {}
+        }
+
+        String codeToSearch = null;
+        if (payload != null && payload.get("syncCode") != null) {
+            codeToSearch = payload.get("syncCode").toString().trim();
+        } else if (payload != null && payload.get("code") != null) {
+            codeToSearch = payload.get("code").toString().trim();
+        } else if (fallbackCode != null && !fallbackCode.trim().isEmpty()) {
+            codeToSearch = fallbackCode.trim();
+        }
+
+        if (codeToSearch != null && !codeToSearch.isEmpty()) {
+            var restOpt = restaurantRepository.findBySyncCodeAndIsDeletedFalse(codeToSearch);
+            if (restOpt.isPresent()) {
+                com.smartdine.coreheart.Restaurant r = restOpt.get();
+                return r.getId() != null ? r.getId() : r.getRestaurantId();
             }
         }
-        if (order.getRestaurantId() == null) {
-            order.setRestaurantId(UUID.fromString("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11"));
+
+        return com.smartdine.coreheart.TenantContext.getRestaurantId();
+    }
+
+    private Order mapPayloadToOrder(Map<String, Object> payload, String fallbackCode) {
+        Order order = new Order();
+        UUID restId = resolveRestaurantId(payload, fallbackCode);
+        if (restId != null) {
+            order.setRestaurantId(restId);
         }
 
         order.setOrderNumber(payload.get("orderNumber") != null ? payload.get("orderNumber").toString() : "#1000");

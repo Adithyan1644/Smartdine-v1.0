@@ -99,4 +99,61 @@ public class MenuService {
 
         return saved;
     }
+
+    @Transactional
+    public boolean deleteItem(String idParam) {
+        if (idParam == null || idParam.trim().isEmpty()) {
+            return false;
+        }
+
+        String trimmedId = idParam.trim();
+        UUID targetUuid = null;
+        try {
+            targetUuid = UUID.fromString(trimmedId);
+        } catch (Exception ignored) {}
+
+        MenuItem item = null;
+        if (targetUuid != null) {
+            item = menuRepository.findById(targetUuid).orElse(null);
+        }
+
+        // Fallback: search database by string ID, shortCode, or item name for tenant
+        if (item == null) {
+            UUID rid = TenantContext.getRestaurantId();
+            if (rid != null) {
+                java.util.List<MenuItem> allItems = menuRepository.findByRestaurantIdAndIsDeletedFalse(rid);
+                item = allItems.stream()
+                        .filter(m -> (m.getId() != null && m.getId().toString().equalsIgnoreCase(trimmedId))
+                                || (m.getShortCode() != null && m.getShortCode().equalsIgnoreCase(trimmedId))
+                                || (m.getName() != null && m.getName().equalsIgnoreCase(trimmedId)))
+                        .findFirst()
+                        .orElse(null);
+            }
+        }
+
+        // If item not found in DB (e.g. transient frontend item or already removed), return true so UI updates cleanly
+        if (item == null) {
+            return true;
+        }
+
+        UUID restaurantId = item.getRestaurantId();
+        menuRepository.delete(item);
+        menuRepository.flush();
+
+        if (restaurantId != null) {
+            try {
+                String topic = "/topic/menu/" + restaurantId.toString();
+                messagingTemplate.convertAndSend(topic, item);
+                System.out.println("✅ Broadcasted menu item deletion: " + item.getName() + " to topic " + topic);
+            } catch (Exception e) {
+                System.err.println("❌ Failed to broadcast menu item deletion: " + e.getMessage());
+            }
+
+            if (tunnelWebSocketHandler != null) {
+                tunnelWebSocketHandler.sendConfigUpdate(restaurantId, "MENU_ITEM_DELETED", item);
+            }
+        }
+
+        return true;
+    }
 }

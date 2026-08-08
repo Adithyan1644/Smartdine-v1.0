@@ -71,6 +71,21 @@ public class GlobalExceptionHandler {
         "Invalid Password"
     );
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Object> handleIllegalArgument(
+            IllegalArgumentException ex,
+            HttpServletRequest request) {
+
+        String message = ex.getMessage();
+        return new ResponseEntity<>(
+            Map.of(
+                "error", message != null ? message : "Invalid argument or missing tenant context",
+                "status", "failed"
+            ),
+            HttpStatus.BAD_REQUEST
+        );
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<Object> handleRuntimeException(
             RuntimeException ex,
